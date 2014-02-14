@@ -1,0 +1,86 @@
+{
+   "abstract" : "VIC is a high level syntax to generate PIC microcontroller assembly",
+   "author" : [
+      "Vikas N. Kumar <vikas@cpan.org>"
+   ],
+   "dynamic_config" : 1,
+   "generated_by" : "Module::Build version 0.4205",
+   "keywords" : [
+      "VIC",
+      "PIC",
+      "assembly"
+   ],
+   "license" : [
+      "perl_5"
+   ],
+   "meta-spec" : {
+      "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
+      "version" : "2"
+   },
+   "name" : "VIC",
+   "no_index" : {
+      "directory" : [
+         "t"
+      ]
+   },
+   "prereqs" : {
+      "build" : {
+         "requires" : {
+            "File::Spec" : "0",
+            "Module::Build" : "0",
+            "Pegex" : "0.22",
+            "Test::More" : "0"
+         }
+      },
+      "configure" : {
+         "requires" : {
+            "Module::Build" : "0",
+            "Software::License" : "0"
+         }
+      },
+      "runtime" : {
+         "recommends" : {
+            "App::Prove" : "0",
+            "XXX" : "0"
+         },
+         "requires" : {
+            "File::ShareDir" : "1.00",
+            "Getopt::Long" : "0"
+         }
+      }
+   },
+   "provides" : {
+      "VIC" : {
+         "file" : "lib/VIC.pm",
+         "version" : "0.01"
+      },
+      "VIC::Command" : {
+         "file" : "lib/VIC/Command.pm"
+      },
+      "VIC::Grammar" : {
+         "file" : "lib/VIC/Grammar.pm"
+      },
+      "VIC::PIC" : {
+         "file" : "lib/VIC/PIC.pm"
+      },
+      "VIC::PIC::Any" : {
+         "file" : "lib/VIC/PIC/Any.pm"
+      },
+      "VIC::PIC::P16F690" : {
+         "file" : "lib/VIC/PIC/P16F690.pm"
+      }
+   },
+   "release_status" : "stable",
+   "resources" : {
+      "bugtracker" : {
+         "web" : "https://github.com/vikasnkumar/vic/issues"
+      },
+      "license" : [
+         "http://dev.perl.org/licenses/"
+      ],
+      "repository" : {
+         "url" : "https://github.com/vikasnkumar/vic"
+      }
+   },
+   "version" : "0.01"
+}

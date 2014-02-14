@@ -1,0 +1,51 @@
+---
+abstract: 'VIC is a high level syntax to generate PIC microcontroller assembly'
+author:
+  - 'Vikas N. Kumar <vikas@cpan.org>'
+build_requires:
+  File::Spec: 0
+  Module::Build: 0
+  Pegex: 0.22
+  Test::More: 0
+configure_requires:
+  Module::Build: 0
+  Software::License: 0
+dynamic_config: 1
+generated_by: 'Module::Build version 0.4205, CPAN::Meta::Converter version 2.132661'
+keywords:
+  - VIC
+  - PIC
+  - assembly
+license: perl
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: VIC
+no_index:
+  directory:
+    - t
+provides:
+  VIC:
+    file: lib/VIC.pm
+    version: 0.01
+  VIC::Command:
+    file: lib/VIC/Command.pm
+  VIC::Grammar:
+    file: lib/VIC/Grammar.pm
+  VIC::PIC:
+    file: lib/VIC/PIC.pm
+  VIC::PIC::Any:
+    file: lib/VIC/PIC/Any.pm
+  VIC::PIC::P16F690:
+    file: lib/VIC/PIC/P16F690.pm
+recommends:
+  App::Prove: 0
+  XXX: 0
+requires:
+  File::ShareDir: 1.00
+  Getopt::Long: 0
+resources:
+  bugtracker: https://github.com/vikasnkumar/vic/issues
+  license: http://dev.perl.org/licenses/
+  repository: https://github.com/vikasnkumar/vic
+version: 0.01
