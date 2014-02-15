@@ -3,6 +3,9 @@ use strict;
 use warnings;
 use POSIX ();
 
+our $VERSION = '0.02';
+$VERSION = eval $VERSION;
+
 use Pegex::Base;
 extends 'Pegex::Tree';
 
@@ -19,6 +22,8 @@ has ast => {
 };
 
 sub throw_error { shift->parser->throw_error(@_); }
+
+sub stack { shift->parser->stack; }
 
 sub got_uc_select {
     my ($self, $type) = @_;
@@ -265,7 +270,7 @@ sub final {
     $self->throw_error("Missing '}'") if $self->ast->{block_stack_top} ne 0;
     $self->throw_error("Main not defined") unless defined $self->ast->{Main};
     my $funcs = '';
-    foreach my $fn (keys %{$ast->{funcs}}) {
+    foreach my $fn (sort(keys %{$ast->{funcs}})) {
         $funcs .= "$fn:\n";
         $funcs .= $ast->{funcs}->{$fn};
         $funcs .= "\n";
@@ -275,12 +280,12 @@ sub final {
     my $variables = '';
     my $vhref = $ast->{variables};
     $variables .= "GLOBAL_VAR_UDATA udata\n" if keys %$vhref;
-    foreach my $var (keys %$vhref) {
+    foreach my $var (sort(keys %$vhref)) {
         # should we care about scope ?
         # FIXME: initialized variables ?
         $variables .= "$vhref->{$var}->{name} res $vhref->{$var}->{size}\n";
     }
-    foreach my $mac (keys %{$ast->{macros}}) {
+    foreach my $mac (sort(keys %{$ast->{macros}})) {
         $variables .= "\n" . $ast->{macros}->{$mac} . "\n", next if $mac =~ /_var$/;
         $macros .= $ast->{macros}->{$mac};
         $macros .= "\n";

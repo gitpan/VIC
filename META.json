@@ -4,7 +4,7 @@
       "Vikas N. Kumar <vikas@cpan.org>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.4205",
+   "generated_by" : "Module::Build version 0.4203",
    "keywords" : [
       "VIC",
       "PIC",
@@ -52,22 +52,30 @@
    "provides" : {
       "VIC" : {
          "file" : "lib/VIC.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       },
       "VIC::Command" : {
          "file" : "lib/VIC/Command.pm"
       },
       "VIC::Grammar" : {
-         "file" : "lib/VIC/Grammar.pm"
+         "file" : "lib/VIC/Grammar.pm",
+         "version" : "0.02"
       },
       "VIC::PIC" : {
-         "file" : "lib/VIC/PIC.pm"
+         "file" : "lib/VIC/PIC.pm",
+         "version" : "0.02"
       },
       "VIC::PIC::Any" : {
-         "file" : "lib/VIC/PIC/Any.pm"
+         "file" : "lib/VIC/PIC/Any.pm",
+         "version" : "0.02"
       },
       "VIC::PIC::P16F690" : {
-         "file" : "lib/VIC/PIC/P16F690.pm"
+         "file" : "lib/VIC/PIC/P16F690.pm",
+         "version" : "0.02"
+      },
+      "VIC::Parser" : {
+         "file" : "lib/VIC/Parser.pm",
+         "version" : "0.02"
       }
    },
    "release_status" : "stable",
@@ -82,5 +90,5 @@
          "url" : "https://github.com/vikasnkumar/vic"
       }
    },
-   "version" : "0.01"
+   "version" : "0.02"
 }
