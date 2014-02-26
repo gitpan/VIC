@@ -80,3 +80,6 @@ TODO
 \b_Inline
 \bpegex-pm
 \binstaller
+\.log$
+\.swp$
+compile_into_module$

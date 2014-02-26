@@ -45,37 +45,40 @@
          },
          "requires" : {
             "File::ShareDir" : "1.00",
-            "Getopt::Long" : "0"
+            "File::Spec" : "0",
+            "Getopt::Long" : "0",
+            "Pegex" : "0.22"
          }
       }
    },
    "provides" : {
       "VIC" : {
          "file" : "lib/VIC.pm",
-         "version" : "0.02"
+         "version" : "0.03"
       },
       "VIC::Command" : {
-         "file" : "lib/VIC/Command.pm"
+         "file" : "lib/VIC/Command.pm",
+         "version" : "0.03"
       },
       "VIC::Grammar" : {
          "file" : "lib/VIC/Grammar.pm",
-         "version" : "0.02"
+         "version" : "0.03"
       },
       "VIC::PIC" : {
          "file" : "lib/VIC/PIC.pm",
-         "version" : "0.02"
+         "version" : "0.03"
       },
       "VIC::PIC::Any" : {
          "file" : "lib/VIC/PIC/Any.pm",
-         "version" : "0.02"
+         "version" : "0.03"
       },
       "VIC::PIC::P16F690" : {
          "file" : "lib/VIC/PIC/P16F690.pm",
-         "version" : "0.02"
+         "version" : "0.03"
       },
       "VIC::Parser" : {
          "file" : "lib/VIC/Parser.pm",
-         "version" : "0.02"
+         "version" : "0.03"
       }
    },
    "release_status" : "stable",
@@ -90,5 +93,5 @@
          "url" : "https://github.com/vikasnkumar/vic"
       }
    },
-   "version" : "0.02"
+   "version" : "0.03"
 }

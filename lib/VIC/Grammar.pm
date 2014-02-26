@@ -2,10 +2,11 @@ package VIC::Grammar;
 use strict;
 use warnings;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 $VERSION = eval $VERSION;
 
-use base 'Pegex::Grammar';
+use Pegex::Base;
+extends 'Pegex::Grammar';
 
 use constant file => './share/vic.pgx';
 
@@ -13,7 +14,10 @@ sub make_tree {
   {
     '+grammar' => 'vic',
     '+toprule' => 'program',
-    '+version' => '0.0.3',
+    '+version' => '0.0.5',
+    'COMMA' => {
+      '.rgx' => qr/\G,/
+    },
     'DOLLAR' => {
       '.rgx' => qr/\G\$/
     },
@@ -35,14 +39,25 @@ sub make_tree {
     'SEMI' => {
       '.rgx' => qr/\G;/
     },
+    '_' => {
+      '.rgx' => qr/\G[\ \t]*/
+    },
+    '__' => {
+      '.rgx' => qr/\G[\ \t]+/
+    },
+    'assign_operator' => {
+      '.rgx' => qr/\G((?:\+|\-|%|\^|\*|\||&|\/)?=)/
+    },
+    'bit_operator' => {
+      '.rgx' => qr/\G(\||\^|&)/
+    },
     'blank_line' => {
       '.all' => [
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
-          '.rgx' => qr/\G\r?\n/
+          '.ref' => 'EOL'
         }
       ]
     },
@@ -70,6 +85,132 @@ sub make_tree {
         }
       ]
     },
+    'compare_operator' => {
+      '.rgx' => qr/\G((?:!|=|<|>)=|(?:<|>))/
+    },
+    'comparison' => {
+      '.all' => [
+        {
+          '.ref' => 'expr_value'
+        },
+        {
+          '.ref' => 'compare_operator'
+        },
+        {
+          '.ref' => 'expr_value'
+        }
+      ]
+    },
+    'complement' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'complement_operator'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'variable'
+        },
+        {
+          '.ref' => '_'
+        }
+      ]
+    },
+    'complement_operator' => {
+      '.rgx' => qr/\G(\~|!)/
+    },
+    'conditional' => {
+      '.all' => [
+        {
+          '.ref' => 'conditional_subject'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'COMMA'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'conditional_predicate'
+        }
+      ]
+    },
+    'conditional_predicate' => {
+      '.any' => [
+        {
+          '.ref' => 'conditional_predicate_double'
+        },
+        {
+          '.ref' => 'conditional_predicate_single'
+        }
+      ]
+    },
+    'conditional_predicate_double' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'block'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'COMMA'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'block'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'SEMI'
+        },
+        {
+          '+max' => 1,
+          '.ref' => 'EOL'
+        }
+      ]
+    },
+    'conditional_predicate_single' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'block'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'SEMI'
+        },
+        {
+          '+max' => 1,
+          '.ref' => 'EOL'
+        }
+      ]
+    },
+    'conditional_subject' => {
+      '+min' => 0,
+      '.ref' => 'single_conditional',
+      '.sep' => {
+        '.ref' => 'logic_operator'
+      }
+    },
     'config_expression' => {
       '.all' => [
         {
@@ -79,8 +220,7 @@ sub make_tree {
           '.ref' => 'EQUAL'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.any' => [
@@ -93,8 +233,7 @@ sub make_tree {
           ]
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         }
       ]
     },
@@ -104,19 +243,43 @@ sub make_tree {
     'end_block' => {
       '.all' => [
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.ref' => 'RCURLY'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '+max' => 1,
           '.ref' => 'EOL'
+        }
+      ]
+    },
+    'expr_value' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.any' => [
+            {
+              '.ref' => 'number'
+            },
+            {
+              '.ref' => 'variable'
+            },
+            {
+              '.ref' => 'number_units'
+            },
+            {
+              '.ref' => 'complement'
+            }
+          ]
+        },
+        {
+          '.ref' => '_'
         }
       ]
     },
@@ -130,6 +293,9 @@ sub make_tree {
         },
         {
           '.ref' => 'op_rhs'
+        },
+        {
+          '.ref' => 'conditional'
         }
       ]
     },
@@ -146,18 +312,19 @@ sub make_tree {
     'identifier' => {
       '.rgx' => qr/\G([a-zA-Z][0-9A-Za-z_]*)/
     },
+    'incdec_operator' => {
+      '.rgx' => qr/\G(\+\+|\-\-)/
+    },
     'instruction' => {
       '.all' => [
         {
           '.ref' => 'name'
         },
         {
-          '+min' => 0,
           '.ref' => 'values'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.ref' => 'SEMI'
@@ -171,18 +338,19 @@ sub make_tree {
     'lhs_op' => {
       '.all' => [
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.ref' => 'variable'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
-          '.ref' => 'operator'
+          '.ref' => 'incdec_operator'
+        },
+        {
+          '.ref' => '_'
         },
         {
           '+max' => 1,
@@ -197,21 +365,25 @@ sub make_tree {
     'lhs_op_rhs' => {
       '.all' => [
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.ref' => 'variable'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
-          '.ref' => 'operator'
+          '.ref' => 'assign_operator'
         },
         {
-          '.ref' => 'value'
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'rhs_expr'
+        },
+        {
+          '.ref' => '_'
         },
         {
           '.ref' => 'SEMI'
@@ -222,18 +394,22 @@ sub make_tree {
         }
       ]
     },
+    'logic_operator' => {
+      '.rgx' => qr/\G((?:&|\|){2})/
+    },
+    'math_operator' => {
+      '.rgx' => qr/\G(\+|\-|\*|\/|%)/
+    },
     'name' => {
       '.all' => [
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.ref' => 'identifier'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         }
       ]
     },
@@ -246,8 +422,7 @@ sub make_tree {
           '.ref' => 'number'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.ref' => 'units'
@@ -257,18 +432,19 @@ sub make_tree {
     'op_rhs' => {
       '.all' => [
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
-          '.ref' => 'operator'
+          '.ref' => 'incdec_operator'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.ref' => 'variable'
+        },
+        {
+          '.ref' => '_'
         },
         {
           '+max' => 1,
@@ -279,9 +455,6 @@ sub make_tree {
           '.ref' => 'EOL'
         }
       ]
-    },
-    'operator' => {
-      '.rgx' => qr/\G((?:!|=|%|\^|&|\*|\~|\-|\+|\||\/|<|>){1,2})/
     },
     'program' => {
       '.all' => [
@@ -301,6 +474,33 @@ sub make_tree {
         }
       ]
     },
+    'rhs_expr' => {
+      '+min' => 0,
+      '.ref' => 'expr_value',
+      '.sep' => {
+        '.ref' => 'rhs_operator'
+      }
+    },
+    'rhs_operator' => {
+      '.any' => [
+        {
+          '.ref' => 'math_operator'
+        },
+        {
+          '.ref' => 'bit_operator'
+        }
+      ]
+    },
+    'single_conditional' => {
+      '.any' => [
+        {
+          '.ref' => 'comparison'
+        },
+        {
+          '.ref' => 'complement'
+        }
+      ]
+    },
     'single_quoted_string' => {
       '.rgx' => qr/\G(?:'((?:[^\n\\']|\\'|\\\\)*?)')/
     },
@@ -310,15 +510,13 @@ sub make_tree {
           '.ref' => 'name'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.ref' => 'LCURLY'
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '+max' => 1,
@@ -358,8 +556,7 @@ sub make_tree {
           '.rgx' => qr/\Gconfig/
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '__'
         },
         {
           '.ref' => 'name'
@@ -379,13 +576,15 @@ sub make_tree {
       '.rgx' => qr/\GPIC[\ \t]+((?i:P16F690|P16F690X));\r?\n/
     },
     'units' => {
-      '.rgx' => qr/\G(s|ms|us)/
+      '.rgx' => qr/\G(s|ms|us|kHz|Hz|MHz)/
+    },
+    'validated_variable' => {
+      '.ref' => 'identifier'
     },
     'value' => {
       '.all' => [
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
+          '.ref' => '_'
         },
         {
           '.any' => [
@@ -403,35 +602,23 @@ sub make_tree {
             },
             {
               '.ref' => 'block'
+            },
+            {
+              '.ref' => 'validated_variable'
             }
           ]
         },
         {
-          '+min' => 0,
-          '.ref' => 'whitespace'
-        }
-      ]
-    },
-    'value_comma' => {
-      '.all' => [
-        {
-          '.ref' => 'value'
-        },
-        {
-          '.rgx' => qr/\G,/
+          '.ref' => '_'
         }
       ]
     },
     'values' => {
-      '.all' => [
-        {
-          '+min' => 0,
-          '.ref' => 'value_comma'
-        },
-        {
-          '.ref' => 'value'
-        }
-      ]
+      '+min' => 0,
+      '.ref' => 'value',
+      '.sep' => {
+        '.ref' => 'COMMA'
+      }
     },
     'variable' => {
       '.all' => [
@@ -442,9 +629,6 @@ sub make_tree {
           '.ref' => 'identifier'
         }
       ]
-    },
-    'whitespace' => {
-      '.rgx' => qr/\G[\ \t]+/
     }
   }
 }

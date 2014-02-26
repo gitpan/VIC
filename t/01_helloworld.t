@@ -1,4 +1,4 @@
-use lib 'pegex-pm/lib';
+use lib 'ext/pegex-pm/lib';
 use t::TestVIC tests => 1, debug => 0;
 
 my $input = <<'...';
@@ -7,8 +7,8 @@ PIC P16F690;
 # A Comment
 
 Main { # set the Main function
-     output_port 'C', 0; # mark RC0 as output
-     port_value 'C', 0, 1;
+     digital_output RC0; # mark pin RC0 as output
+     write RC0, 1; # write the value 1 to RC0
      hang;
 } # end the Main function
 ...
@@ -25,8 +25,8 @@ _start:
      banksel   TRISC
      bcf       TRISC, TRISC0
      banksel   PORTC
-     clrf      PORTC
-     bsf       PORTC,0
+     bcf       PORTC, 0
+     bsf       PORTC, 0
      goto      $
      end
 ...

@@ -1,14 +1,14 @@
-use lib 'pegex-pm/lib';
+use lib 'ext/pegex-pm/lib';
 use t::TestVIC tests => 1, debug => 0;
 
 my $input = <<'...';
 PIC P16F690;
 
 Main {
-    output_port 'C';
+    digital_output PORTC;
     $display = 0x08; # create a 8-bit register by checking size
     Loop {
-        port_value 'C', 0xFF, $display;
+        write PORTC, $display;
         delay 1s;
         # improve this depiction
         # circular rotate right by 1 bit
@@ -58,7 +58,7 @@ _start:
     movlw D'8'
     movwf DISPLAY
 _loop_1:
-    movf DISPLAY, 0
+    movf DISPLAY, W
     movwf PORTC
     call _delay_1s
     ;; ror

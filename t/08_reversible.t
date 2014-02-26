@@ -4,29 +4,43 @@ use t::TestVIC tests => 1, debug => 0;
 my $input = <<'...';
 PIC P16F690;
 
-config debounce count = 5;
+config debounce count = 2;
 config debounce delay = 1ms;
+config adc right_justify = 0;
 
 Main {
     digital_output PORTC;
-    digital_input RA3; # pin 3 is digital
-    $display = 0;
+    digital_input RA3;
+    analog_input RA0;
+    # adc_enable clock, channel
+    adc_enable 500kHz, AN0;
+    $display = 0x08; # create a 8-bit register
+    $dirxn = 0;
     Loop {
+        write PORTC, $display;
+        adc_read $userval;
+        $userval += 100;
+        delay_ms $userval;
         debounce RA3, Action {
-            $display++;
-            write PORTC, $display;
+            $dirxn = !$dirxn;
+        };
+        $dirxn == 1, True {
+            rol $display, 1;
+        }, False {
+            ror $display, 1;
         };
     }
 }
 ...
 
 my $output = <<'...';
-;;;; generated code for PIC header file
 #include <p16f690.inc>
 
 ;;;; generated code for variables
 GLOBAL_VAR_UDATA udata
+DIRXN res 1
 DISPLAY res 1
+USERVAL res 1
 
 ;;;;;; DEBOUNCE VARIABLES ;;;;;;;
 
@@ -37,11 +51,11 @@ DEBOUNCESTATE db 0x01
 DEBOUNCECOUNTER db 0x00
 
 
+
 ;;;;;; DELAY FUNCTIONS ;;;;;;;
 
 DELAY_VAR_UDATA udata
 DELAY_VAR   res 3
-
 
 
 
@@ -67,9 +81,23 @@ _delay_msecs_loop_0:
     goto    _delay_msecs_loop_1
     endm
 
+m_delay_wms macro
+    local _delayw_msecs_loop_0, _delayw_msecs_loop_1
+    movwf   DELAY_VAR + 1
+_delayw_msecs_loop_1:
+    clrf   DELAY_VAR   ;; set to 0 which gets decremented to 0xFF
+_delayw_msecs_loop_0:
+    decfsz  DELAY_VAR, F
+    goto    _delayw_msecs_loop_0
+    decfsz  DELAY_VAR + 1, F
+    goto    _delayw_msecs_loop_1
+    endm
+
 
 
 	__config (_INTRC_OSC_NOCLKOUT & _WDT_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _BOR_OFF & _IESO_OFF & _FCMEN_OFF)
+
+
 
 	org 0
 
@@ -86,14 +114,57 @@ _start:
 	banksel ANSEL
 	movlw 0xFF
 	movwf ANSEL
-    movlw 0xFF
-    movwf ANSELH
+	movlw 0xFF
+	movwf ANSELH
 	banksel PORTA
 
-	clrf DISPLAY
+	banksel TRISA
+	bsf TRISA, TRISA0
+	banksel ANSEL
+	movlw 0x01
+	movwf ANSEL
+	movlw 0x00
+	movwf ANSELH
+	banksel PORTA
+
+	banksel ADCON1
+	movlw B'00000000'
+	movwf ADCON1
+	banksel ADCON0
+	movlw B'00000001'
+	movwf ADCON0
+
+	;; moves 8 to DISPLAY
+	movlw D'8'
+	movwf DISPLAY
+
+	clrf DIRXN
 
 ;;;; generated code for Loop1
 _loop_1:
+
+	;; moves DISPLAY to PORTC
+	movf  DISPLAY, W
+	movwf PORTC
+
+	;;;delay 5us
+	nop
+	nop
+	nop
+	nop
+	nop
+	bsf ADCON0, GO
+	btfss ADCON0, GO
+	goto $ - 1
+	movf ADRESH, W
+	movwf USERVAL
+
+	;;moves 100 to W
+	movlw D'100'
+	addwf USERVAL, F
+
+	movf USERVAL, W
+	call _delay_wms
 
 	;;; generate code for debounce A<3>
 	call _delay_1ms
@@ -119,18 +190,27 @@ _debounce_state_up:
 
 _debounce_state_check:
 	movf    DEBOUNCECOUNTER, W
-	xorlw   5
-	;; is counter == 5 ?
+	xorlw   2
+	;; is counter == 2 ?
 	btfss   STATUS, Z
-	goto _end_action_2
-	;; after 5 straight, flip direction
+	goto    _end_action_2
+	;; after 2 straight, flip direction
 	comf    DEBOUNCESTATE, 1
 	clrf    DEBOUNCECOUNTER
 	;; was it a key-down
 	btfss   DEBOUNCESTATE, 0
-	goto _end_action_2
-	goto _action_2
+	goto    _end_action_2
+	goto    _action_2
 _end_action_2:
+
+
+	movf DIRXN, W
+	xorlw 1
+	btfss STATUS, Z ;; DIRXN == 1 ?
+	goto _false_2
+	goto _true_2
+_end_conditional_0:
+
 
 	goto _loop_1
 
@@ -138,17 +218,44 @@ _end_action_2:
 ;;;; generated code for Action2
 _action_2:
 
-	;; increments DISPLAY in place
-	incf DISPLAY, 1
+	clrw
 
-	;; moves DISPLAY to PORTC
-	movf  DISPLAY, W
-	movwf PORTC
-	goto _end_action_2 ;; go back
+;; generate code for !DIRXN
+	comf DIRXN, W
+	btfsc STATUS, Z
+	movlw 1
+
+	movwf DIRXN
+
+	goto _end_action_2;; go back to end of conditional
 
 _delay_1ms:
 	m_delay_ms D'1'
 	return
+
+_delay_wms:
+	m_delay_wms
+	return
+
+;;;; generated code for False2
+_false_2:
+
+	bcf STATUS, C
+	rrf DISPLAY, 1
+	btfsc STATUS, C
+	bsf DISPLAY, 7
+
+	goto _end_conditional_0;; go back to end of conditional
+
+;;;; generated code for True2
+_true_2:
+
+	bcf STATUS, C
+	rlf DISPLAY, 1
+	btfsc STATUS, C
+	bsf DISPLAY, 0
+
+	goto _end_conditional_0;; go back to end of conditional
 
 
 

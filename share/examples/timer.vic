@@ -1,14 +1,11 @@
 PIC P16F690;
 
-config debounce count = 5;
-config debounce delay = 1ms;
-
 Main {
     digital_output PORTC;
-    digital_input RA3;
-    $display = 0;
+    $display = 0;    
+    timer_enable TMR0, 256;
     Loop {
-        debounce RA3, Action {
+        timer Action {
             $display++;
             write PORTC, $display;
         };

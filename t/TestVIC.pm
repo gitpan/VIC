@@ -2,12 +2,14 @@ package t::TestVIC;
 use strict;
 use warnings;
 
+use Carp;
 use Test::Builder;
 use VIC;
 use base qw(Exporter);
 
 our @EXPORT = qw(
     compiles_ok
+    compile_fails_ok
 );
 
 my $CLASS = __PACKAGE__;
@@ -40,12 +42,10 @@ sub sanitize {
 sub compiles_ok {
     my ($input, $output, $msg) = @_;
     unless (defined $input) {
-        require Carp;
-        Carp::croak("compiles_ok: must pass an input code to compile");
+        croak("compiles_ok: must pass an input code to compile");
     }
     unless (defined $output) {
-        require Carp;
-        Carp::croak("compiles_ok: must pass an output code to compare with");
+        croak("compiles_ok: must pass an output code to compare with");
     }
     my $compiled = VIC::compile($input);
     $compiled = sanitize($compiled);
@@ -63,6 +63,15 @@ sub compiles_ok {
         $Tester->diag("Character $i: $c0[$i] != $c1[$i]"), $count++ if $c0[$i] ne $c1[$i];
         last if $count > 5;
     }
+}
+
+sub compile_fails_ok {
+    my ($input, $msg) = @_;
+    unless (defined $input) {
+        croak("compile_fails_ok: must pass an input code to compile");
+    }
+    eval { VIC::compile($input); };
+    $Tester->ok($@, $@);
 }
 
 1;
@@ -85,6 +94,11 @@ A test class for handling VIC testing
 
 This function takes the input VIC code, and the expected assembly code and
 checks whether the VIC code compiles into the assembly code.
+
+=item B<compile_fails_ok $input>
+
+This function takes the input VIC code and checks whether the VIC code fails
+to compile into assembly code.
 
 =back
 
