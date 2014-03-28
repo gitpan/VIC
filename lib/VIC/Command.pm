@@ -5,7 +5,7 @@ use warnings;
 use Getopt::Long;
 use VIC;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 $VERSION = eval $VERSION;
 
 sub usage {
@@ -16,6 +16,7 @@ sub usage {
         -p, --pic <PIC>       Use this PIC choice instead of the one in the code
         -o, --output <file>   Writes the compiled syntax to the given output file
         -d, --debug           Dump the compile tree for debugging
+        -i, --intermediate    Inline the intermediate code with the output
 ...
     die $usage;
 }
@@ -28,16 +29,19 @@ sub run {
     my $output = '';
     my $help = 0;
     my $pic = undef;
+    my $intermediate = undef;
 
     GetOptions(
         "output=s" => \$output,
         "debug" => \$debug,
         "help" => \$help,
         "pic=s" => \$pic,
+        "intermediate" => \$intermediate,
     ) or usage();
     usage() if $help;
 
     $VIC::Debug = $debug;
+    $VIC::Intermediate = $intermediate;
 
     my $fh;
     if (length $output) {

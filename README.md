@@ -3,6 +3,8 @@ VIC
 
 VIC is a nice syntax that compiles to PIC assembly.
 
+![MeMe](https://raw.githubusercontent.com/vikasnkumar/vic/master/doc/Cr8GVrV.jpg)
+
 #Building as a user
 
     $ perl ./Build.PL --install_base=/usr/local/
@@ -106,6 +108,8 @@ To erase the code from the microcontroller,
 
     $ pk2cmd -PP16F690 -E
 
+*NOTE*: All the above have been implemented in a `GNUmakefile` present under
+`share/examples/GNUmakefile`.
 
 #Testing on PIC microcontrollers on Windows
 

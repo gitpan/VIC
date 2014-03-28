@@ -2,7 +2,7 @@ package VIC::Grammar;
 use strict;
 use warnings;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -14,30 +14,15 @@ sub make_tree {
   {
     '+grammar' => 'vic',
     '+toprule' => 'program',
-    '+version' => '0.0.5',
+    '+version' => '0.0.7',
     'COMMA' => {
       '.rgx' => qr/\G,/
     },
     'DOLLAR' => {
       '.rgx' => qr/\G\$/
     },
-    'EOL' => {
-      '.rgx' => qr/\G\r?\n/
-    },
     'EOS' => {
       '.rgx' => qr/\G\z/
-    },
-    'EQUAL' => {
-      '.rgx' => qr/\G=/
-    },
-    'LCURLY' => {
-      '.rgx' => qr/\G\{/
-    },
-    'RCURLY' => {
-      '.rgx' => qr/\G\}/
-    },
-    'SEMI' => {
-      '.rgx' => qr/\G;/
     },
     '_' => {
       '.rgx' => qr/\G[\ \t]*/
@@ -45,23 +30,7 @@ sub make_tree {
     '__' => {
       '.rgx' => qr/\G[\ \t]+/
     },
-    'assign_operator' => {
-      '.rgx' => qr/\G((?:\+|\-|%|\^|\*|\||&|\/)?=)/
-    },
-    'bit_operator' => {
-      '.rgx' => qr/\G(\||\^|&)/
-    },
-    'blank_line' => {
-      '.all' => [
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'EOL'
-        }
-      ]
-    },
-    'block' => {
+    'anonymous_block' => {
       '.all' => [
         {
           '.ref' => 'start_block'
@@ -75,6 +44,50 @@ sub make_tree {
         }
       ]
     },
+    'assign_expr' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'variable'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'assign_operator'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'rhs_expr'
+        }
+      ]
+    },
+    'assign_operator' => {
+      '.rgx' => qr/\G([\+\-%\^\*\|&\/]?=)/
+    },
+    'bit_operator' => {
+      '.rgx' => qr/\G([\|\^&])/
+    },
+    'blank_line' => {
+      '.rgx' => qr/\G[\ \t]*\r?\n/
+    },
+    'block' => {
+      '.any' => [
+        {
+          '.ref' => 'named_block'
+        },
+        {
+          '.ref' => 'conditional_block'
+        }
+      ]
+    },
+    'boolean' => {
+      '.rgx' => qr/\G(TRUE|FALSE|true|false|0|1)/
+    },
     'comment' => {
       '.any' => [
         {
@@ -86,7 +99,7 @@ sub make_tree {
       ]
     },
     'compare_operator' => {
-      '.rgx' => qr/\G((?:!|=|<|>)=|(?:<|>))/
+      '.rgx' => qr/\G([!=<>]=|(?:<|>))/
     },
     'comparison' => {
       '.all' => [
@@ -113,7 +126,7 @@ sub make_tree {
           '.ref' => '_'
         },
         {
-          '.ref' => 'variable'
+          '.ref' => 'rhs_expr'
         },
         {
           '.ref' => '_'
@@ -123,8 +136,70 @@ sub make_tree {
     'complement_operator' => {
       '.rgx' => qr/\G(\~|!)/
     },
-    'conditional' => {
+    'conditional_block' => {
       '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.rgx' => qr/\Gwhile|until/
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'conditional_subject'
+        },
+        {
+          '.ref' => 'anonymous_block'
+        }
+      ]
+    },
+    'conditional_predicate' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'anonymous_block'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '+max' => 1,
+          '.ref' => 'COMMA'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '+min' => 0,
+          '.any' => [
+            {
+              '.ref' => 'anonymous_block'
+            },
+            {
+              '.ref' => 'conditional_statement'
+            }
+          ]
+        },
+        {
+          '.ref' => '_'
+        }
+      ]
+    },
+    'conditional_statement' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.rgx' => qr/\Gif/
+        },
+        {
+          '.ref' => '_'
+        },
         {
           '.ref' => 'conditional_subject'
         },
@@ -142,70 +217,8 @@ sub make_tree {
         }
       ]
     },
-    'conditional_predicate' => {
-      '.any' => [
-        {
-          '.ref' => 'conditional_predicate_double'
-        },
-        {
-          '.ref' => 'conditional_predicate_single'
-        }
-      ]
-    },
-    'conditional_predicate_double' => {
-      '.all' => [
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'block'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'COMMA'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'block'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'SEMI'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'EOL'
-        }
-      ]
-    },
-    'conditional_predicate_single' => {
-      '.all' => [
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'block'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'SEMI'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'EOL'
-        }
-      ]
-    },
     'conditional_subject' => {
-      '+min' => 0,
+      '+min' => 1,
       '.ref' => 'single_conditional',
       '.sep' => {
         '.ref' => 'logic_operator'
@@ -217,10 +230,7 @@ sub make_tree {
           '.ref' => 'name'
         },
         {
-          '.ref' => 'EQUAL'
-        },
-        {
-          '.ref' => '_'
+          '.rgx' => qr/\G=[\ \t]*/
         },
         {
           '.any' => [
@@ -241,21 +251,10 @@ sub make_tree {
       '.rgx' => qr/\G(?:"((?:[^\n\\"]|\\"|\\\\|\\[0nt])*?)")/
     },
     'end_block' => {
-      '.all' => [
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'RCURLY'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'EOL'
-        }
-      ]
+      '.rgx' => qr/\G[\ \t]*\}[\ \t]*\r?\n?/
+    },
+    'end_nested_expr' => {
+      '.rgx' => qr/\G[\ \t]*\)[\ \t]*/
     },
     'expr_value' => {
       '.all' => [
@@ -275,6 +274,12 @@ sub make_tree {
             },
             {
               '.ref' => 'complement'
+            },
+            {
+              '.ref' => 'modifier_variable'
+            },
+            {
+              '.ref' => 'nested_expr_value'
             }
           ]
         },
@@ -284,18 +289,22 @@ sub make_tree {
       ]
     },
     'expression' => {
-      '.any' => [
+      '.all' => [
         {
-          '.ref' => 'lhs_op_rhs'
+          '.any' => [
+            {
+              '.ref' => 'assign_expr'
+            },
+            {
+              '.ref' => 'unary_expr'
+            },
+            {
+              '.ref' => 'conditional_statement'
+            }
+          ]
         },
         {
-          '.ref' => 'lhs_op'
-        },
-        {
-          '.ref' => 'op_rhs'
-        },
-        {
-          '.ref' => 'conditional'
+          '.ref' => 'line_ending'
         }
       ]
     },
@@ -312,9 +321,6 @@ sub make_tree {
     'identifier' => {
       '.rgx' => qr/\G([a-zA-Z][0-9A-Za-z_]*)/
     },
-    'incdec_operator' => {
-      '.rgx' => qr/\G(\+\+|\-\-)/
-    },
     'instruction' => {
       '.all' => [
         {
@@ -324,81 +330,31 @@ sub make_tree {
           '.ref' => 'values'
         },
         {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'SEMI'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'EOL'
+          '.ref' => 'line_ending'
         }
       ]
     },
-    'lhs_op' => {
-      '.all' => [
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'variable'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'incdec_operator'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'SEMI'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'EOL'
-        }
-      ]
-    },
-    'lhs_op_rhs' => {
-      '.all' => [
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'variable'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'assign_operator'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'rhs_expr'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'SEMI'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'EOL'
-        }
-      ]
+    'line_ending' => {
+      '.rgx' => qr/\G[\ \t]*;[\ \t]*\r?\n?/
     },
     'logic_operator' => {
-      '.rgx' => qr/\G((?:&|\|){2})/
+      '.rgx' => qr/\G([&\|]{2})/
     },
     'math_operator' => {
-      '.rgx' => qr/\G(\+|\-|\*|\/|%)/
+      '.rgx' => qr/\G([\+\-\*\/%])/
+    },
+    'modifier_variable' => {
+      '.all' => [
+        {
+          '.ref' => 'identifier'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'variable'
+        }
+      ]
     },
     'name' => {
       '.all' => [
@@ -413,8 +369,38 @@ sub make_tree {
         }
       ]
     },
+    'named_block' => {
+      '.all' => [
+        {
+          '.ref' => 'name'
+        },
+        {
+          '.ref' => 'anonymous_block'
+        }
+      ]
+    },
+    'nested_expr_value' => {
+      '.all' => [
+        {
+          '.ref' => 'start_nested_expr'
+        },
+        {
+          '.ref' => 'rhs_expr'
+        },
+        {
+          '.ref' => 'end_nested_expr'
+        }
+      ]
+    },
     'number' => {
-      '.rgx' => qr/\G(0x[0-9a-fA-F]+|0X[0-9a-fA-F]+|[0-9]+)/
+      '.any' => [
+        {
+          '.rgx' => qr/\G(0[xX][0-9a-fA-F]+|[0-9]+)/
+        },
+        {
+          '.ref' => 'boolean'
+        }
+      ]
     },
     'number_units' => {
       '.all' => [
@@ -426,33 +412,6 @@ sub make_tree {
         },
         {
           '.ref' => 'units'
-        }
-      ]
-    },
-    'op_rhs' => {
-      '.all' => [
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'incdec_operator'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'variable'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'SEMI'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'EOL'
         }
       ]
     },
@@ -475,7 +434,7 @@ sub make_tree {
       ]
     },
     'rhs_expr' => {
-      '+min' => 0,
+      '+min' => 1,
       '.ref' => 'expr_value',
       '.sep' => {
         '.ref' => 'rhs_operator'
@@ -498,6 +457,9 @@ sub make_tree {
         },
         {
           '.ref' => 'complement'
+        },
+        {
+          '.ref' => 'boolean'
         }
       ]
     },
@@ -505,24 +467,10 @@ sub make_tree {
       '.rgx' => qr/\G(?:'((?:[^\n\\']|\\'|\\\\)*?)')/
     },
     'start_block' => {
-      '.all' => [
-        {
-          '.ref' => 'name'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'LCURLY'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '+max' => 1,
-          '.ref' => 'EOL'
-        }
-      ]
+      '.rgx' => qr/\G[\ \t]*\{[\ \t]*\r?\n?/
+    },
+    'start_nested_expr' => {
+      '.rgx' => qr/\G[\ \t]*\([\ \t]*/
     },
     'statement' => {
       '.any' => [
@@ -559,21 +507,76 @@ sub make_tree {
           '.ref' => '__'
         },
         {
-          '.ref' => 'name'
+          '.any' => [
+            {
+              '.ref' => 'name'
+            },
+            {
+              '.ref' => 'variable'
+            }
+          ]
         },
         {
           '.ref' => 'config_expression'
         },
         {
-          '.ref' => 'SEMI'
-        },
-        {
-          '.ref' => 'EOL'
+          '.ref' => 'line_ending'
         }
       ]
     },
     'uc_select' => {
-      '.rgx' => qr/\GPIC[\ \t]+((?i:P16F690|P16F690X));\r?\n/
+      '.rgx' => qr/\GPIC[\ \t]+((?i:P16F690|P16F690X))[\ \t]*;[\ \t]*\r?\n?/
+    },
+    'unary_expr' => {
+      '.any' => [
+        {
+          '.ref' => 'unary_lhs'
+        },
+        {
+          '.ref' => 'unary_rhs'
+        }
+      ]
+    },
+    'unary_lhs' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'unary_operator'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'variable'
+        },
+        {
+          '.ref' => '_'
+        }
+      ]
+    },
+    'unary_operator' => {
+      '.rgx' => qr/\G(\+\+|\-\-)/
+    },
+    'unary_rhs' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'variable'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'unary_operator'
+        },
+        {
+          '.ref' => '_'
+        }
+      ]
     },
     'units' => {
       '.rgx' => qr/\G(s|ms|us|kHz|Hz|MHz)/
@@ -601,10 +604,13 @@ sub make_tree {
               '.ref' => 'variable'
             },
             {
-              '.ref' => 'block'
+              '.ref' => 'named_block'
             },
             {
               '.ref' => 'validated_variable'
+            },
+            {
+              '.ref' => 'modifier_variable'
             }
           ]
         },

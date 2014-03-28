@@ -1,5 +1,7 @@
 bin/vic
 Build.PL
+doc/Cr8GVrV.jpg
+doc/philosophy.md
 lib/VIC.pm
 lib/VIC/Command.pm
 lib/VIC/Grammar.pm
@@ -16,14 +18,18 @@ README.md
 share/examples/adctest.vic
 share/examples/blinker.vic
 share/examples/debouncer.vic
+share/examples/GNUmakefile
 share/examples/helloworld.vic
 share/examples/interrupt.vic
+share/examples/math.vic
 share/examples/reversible.vic
 share/examples/rotater.vic
 share/examples/timer.vic
+share/examples/uart.vic
 share/examples/varrotate.vic
 share/rebuild-grammar
 share/rebuild-grammar.PL
+share/vic.new-pegex-syntax.pgx
 share/vic.pgx
 share/vic.vim
 t/00_use.t
@@ -36,4 +42,5 @@ t/06_fail_instruction.t
 t/07_timer.t
 t/08_reversible.t
 t/09_interrupt.t
+t/10_math.t
 t/TestVIC.pm

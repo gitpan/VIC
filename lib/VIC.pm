@@ -7,8 +7,9 @@ use VIC::Grammar;
 use VIC::PIC;
 
 our $Debug = 0;
+our $Intermediate = 0;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 $VERSION = eval $VERSION;
 
 sub compile {
@@ -16,7 +17,10 @@ sub compile {
 
     my $parser = VIC::Parser->new(
         grammar => VIC::Grammar->new,
-        receiver => VIC::PIC->new(pic_override => $pic),
+        receiver => VIC::PIC->new(
+                    pic_override => $pic,
+                    intermediate_inline => $Intermediate,
+                ),
         debug => $Debug,
         throw_on_error => 1,
     );

@@ -1,11 +1,12 @@
 package VIC::PIC::P16F690;
 use strict;
 use warnings;
+use bigint;
 use Carp;
 use POSIX ();
 use Pegex::Base; # use this instead of Mo
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 $VERSION = eval $VERSION;
 
 has type => 'p16f690';
@@ -13,8 +14,6 @@ has type => 'p16f690';
 has include => 'p16f690.inc';
 
 has org => 0;
-
-has address_bits => 8;
 
 has address_range => [ 0x0000, 0x0FFF ]; # 4K
 
@@ -26,22 +25,25 @@ has program_counter_size => 13; # PCL and PCLATH<4:0>
 
 has stack_size => 8; # 8-level x 13-bit wide
 
+has register_size => 8; # size of register W
+
 has banks => {
     # general purpose registers
-    gpr => {
+    gpr => [
         [ 0x20, 0x7F ],
         [ 0xA0, 0xEF ],
         [ 0x120, 0x16F ],
         [ ], # no GPRs in bank 4
-    },
+    ],
     # special function registers
-    sfr => {
+    sfr => [
         [ 0x00, 0x1F ],
         [ 0x80, 0x9F ],
         [ 0x100, 0x11F ],
         [ 0x180, 0x19F ],
-    },
+    ],
     bank_size => 0x80,
+    common_bank => [ 0x70, 0x7F ],
 };
 
 has register_banks => {
@@ -434,6 +436,9 @@ has code_config => {
         vref => 0,
         internal => 0,
     },
+    variable => {
+        bits => 8, # bits. same as register_size
+    },
 };
 
 sub update_config {
@@ -441,11 +446,28 @@ sub update_config {
     return unless defined $grp;
     $self->code_config->{$grp} = {} unless exists $self->code_config->{$grp};
     my $grpref = $self->code_config->{$grp};
+    if ($key eq 'bits') {
+        carp "$val-bits is not supported. Maximum supported size is 64-bit"
+            if $val > 64;
+        $val = 8 if $val <= 8;
+        $val = 16 if ($val > 8 and $val <= 16);
+        $val = 32 if ($val > 16 and $val <= 32);
+        $val = 64 if $val > 32;
+    }
     if (ref $grpref eq 'HASH') {
         $grpref->{$key} = $val;
     } else {
-        warn "Unsupported type for $grp\n";
+        $self->code_config->{$grp} = { $key => $val };
     }
+    1;
+}
+
+sub address_bits {
+    my ($self, $varname) = @_;
+    my $bits = $self->code_config->{variable}->{bits};
+    return $bits unless $varname;
+    $bits = $self->code_config->{lc $varname}->{bits} || $bits;
+    return $bits;
 }
 
 sub validate {
@@ -469,6 +491,30 @@ sub validate {
     return 1 if exists $self->i2c_pins->{$var};
     return 1 if exists $self->pwm_pins->{$var};
     return 0;
+}
+
+sub validate_operator {
+    my ($self, $mod) = @_;
+    my $vmod = "op_$mod" if $mod =~ /^
+            LE | GE | GT | LT | EQ | NE |
+            ADD | SUB | MUL | DIV | MOD |
+            BXOR | BOR | BAND | AND | OR |
+            ASSIGN | INC | DEC | NOT | COMP
+        /x;
+    return $vmod;
+}
+
+sub validate_modifier {
+    my ($self, $mod, $suffix) = @_;
+    my $vmod = "op_$mod" if $mod =~ /^
+            LE | GE | GT | LT | EQ | NE |
+            ADD | SUB | MUL | DIV | MOD |
+            BXOR | BOR | BAND | AND | OR |
+            ASSIGN | INC | DEC | NOT | COMP
+        /x;
+    $vmod = uc $mod unless defined $vmod;
+    $vmod .= "_$suffix" if defined $suffix;
+    return $vmod;
 }
 
 sub digital_output {
@@ -510,8 +556,8 @@ sub write {
 \tcomf PORT$port, 1
 ...
         }
-        return $self->assign_literal("PORT$port", $val) if ($val =~ /^\d+$/);
-        return $self->assign_variable("PORT$port", uc $val);
+        return $self->op_ASSIGN_literal("PORT$port", $val) if ($val =~ /^\d+$/);
+        return $self->op_ASSIGN_variable("PORT$port", uc $val);
     } elsif (exists $self->pins->{$outp}) {
         my ($port, $portbit) = @{$self->pins->{$outp}};
         if ($val =~ /^\d+$/) {
@@ -519,11 +565,11 @@ sub write {
             return "\tbsf PORT$port, $portbit\n" if "$val" eq '1';
             carp "$val cannot be applied to a pin $outp";
         }
-        return $self->assign_variable("PORT$port", uc $val);
+        return $self->op_ASSIGN_variable("PORT$port", uc $val);
     } elsif ($self->validate($outp)) {
         my $code = "\tbanksel $outp\n";
-        $code .= ($val =~ /^\d+$/) ? $self->assign_literal($outp, $val) :
-                                    $self->assign_variable($outp, uc $val);
+        $code .= ($val =~ /^\d+$/) ? $self->op_ASSIGN_literal($outp, $val) :
+                                    $self->op_ASSIGN_variable($outp, uc $val);
         return $code;
     } else {
         carp "Cannot find $outp in the list of ports or pins";
@@ -842,6 +888,20 @@ sub delay {
     return wantarray ? ($code, $funcs, $macros) : $code;
 }
 
+sub shl {
+    my ($self, $var, $bits) = @_;
+    $var = uc $var;
+    my $code = '';
+    for (1 .. $bits) {
+        $code .= << "...";
+\trlf $var, 1
+...
+    }
+    $code .= << "...";
+\tbcf STATUS, C
+...
+}
+
 sub rol {
     my ($self, $var, $bits) = @_;
     $var = uc $var;
@@ -856,6 +916,20 @@ sub rol {
 ...
     }
     return $code;
+}
+
+sub shr {
+    my ($self, $var, $bits) = @_;
+    $var = uc $var;
+    my $code = '';
+    for (1 .. $bits) {
+        $code .= << "...";
+\trrf $var, 1
+...
+    }
+    $code .= << "...";
+\tbcf STATUS, C
+...
 }
 
 sub ror {
@@ -874,68 +948,143 @@ sub ror {
     return $code;
 }
 
-sub assign_literal {
+sub op_ASSIGN_literal {
     my ($self, $var, $val) = @_;
-    return "\tclrf $var\n" if "$val" eq '0';
-    return <<"...";
-\t;; moves $val to $var
-\tmovlw D'$val'
+    my $bits = $self->address_bits($var);
+    my $bytes = POSIX::ceil($bits / 8);
+    my $nibbles = 2 * $bytes;
+    my $code = sprintf "\t;; moves $val (0x%0${nibbles}X) to $var\n", $val;
+    if ($val >= 2 ** $bits) {
+        carp "Warning: Value $val doesn't fit in $bits-bits";
+        $code .= "\t;; $val doesn't fit in $bits-bits. Using ";
+        $val &= (2 ** $bits) - 1;
+        $code .= sprintf "%d (0x%0${nibbles}X)\n", $val, $val;
+    }
+    if ($val == 0) {
+        $code .= "\tclrf $var\n";
+        for (2 .. $bytes) {
+            $code .= sprintf "\tclrf $var + %d\n", ($_ - 1);
+        }
+    } else {
+        my $valbyte = $val & ((2 ** 8) - 1);
+        $code .= sprintf "\tmovlw 0x%02X\n\tmovwf $var\n", $valbyte if $valbyte > 0;
+        $code .= "\tclrf $var\n" if $valbyte == 0;
+        for (2 .. $bytes) {
+            my $k = $_ * 8;
+            my $i = $_ - 1;
+            my $j = $i * 8;
+            # get the right byte. 64-bit math requires bigint
+            $valbyte = (($val & ((2 ** $k) - 1)) & (2 ** $k - 2 ** $j)) >> $j;
+            $code .= sprintf "\tmovlw 0x%02X\n\tmovwf $var + $i\n", $valbyte if $valbyte > 0;
+            $code .= "\tclrf $var + $i\n" if $valbyte == 0;
+        }
+    }
+    return $code;
+}
+
+sub op_ASSIGN_variable {
+    my ($self, $var1, $var2) = @_;
+    my $b1 = POSIX::ceil($self->address_bits($var1) / 8);
+    my $b2 = POSIX::ceil($self->address_bits($var2) / 8);
+    $var2 = uc $var2;
+    $var1 = uc $var1;
+    my $code = "\t;; moving $var2 to $var1\n";
+    if ($b1 == $b2) {
+        $code .= "\tmovf $var2, W\n\tmovwf $var1\n";
+        for (2 .. $b1) {
+            my $i = $_ - 1;
+            $code .= "\tmovf $var2 + $i, W\n\tmovwf $var1 + $i\n";
+        }
+    } elsif ($b1 > $b2) {
+        # we are moving a smaller var into a larger var
+        $code .= "\t;; $var2 has a smaller size than $var1\n";
+        $code .= "\tmovf $var2, W\n\tmovwf $var1\n";
+        for (2 .. $b2) {
+            my $i = $_ - 1;
+            $code .= "\tmovf $var2 + $i, W\n\tmovwf $var1 + $i\n";
+        }
+        $code .= "\t;; we practice safe assignment here. zero out the rest\n";
+        # we practice safe mathematics here. zero-out the rest of the place
+        $b2++;
+        for ($b2 .. $b1) {
+            $code .= sprintf "\tclrf $var1 + %d\n", ($_ - 1);
+        }
+    } elsif ($b1 < $b2) {
+        # we are moving a larger var into a smaller var
+        $code .= "\t;; $var2 has a larger size than $var1. truncating..,\n";
+        $code .= "\tmovf $var2, W\n\tmovwf $var1\n";
+        for (2 .. $b1) {
+            my $i = $_ - 1;
+            $code .= "\tmovf $var2 + $i, W\n\tmovwf $var1 + $i\n";
+        }
+    } else {
+        carp "Warning: should never reach here: $var1 is $b1 bytes and $var2 is $b2 bytes";
+    }
+    return $code;
+}
+
+sub op_ASSIGN_w {
+    my ($self, $var) = @_;
+    return unless $var;
+    return << "...";
 \tmovwf $var
 ...
 }
 
-sub assign_variable {
-    my ($self, $var1, $var2) = @_;
-    return <<"...";
-\t;; moves $var2 to $var1
-\tmovf  $var2, W
-\tmovwf $var1
-...
-}
-
-sub assign_expression {
-    my $self = shift;
-    my $var1 = shift;
-    return unless scalar @_;
-    my @code = ("\tclrw\n");
-    foreach my $expr (@_) {
-        if ($expr =~ /^OP::(NOT|COMP)::(\w+)$/) {
-            # this is a unary operation
-            my $op = $1;
-            my $var2 = uc $2;
-            my $comp_code = << "...";
-;; generate code for ~$var2
-\tcomf $var2, W
-...
-            my $not_code = << "...";
-;; generate code for !$var2
+sub op_NOT {
+    my ($self, $var2) = @_;
+    return << "...";
+\t;;;; generate code for !$var2
 \tcomf $var2, W
 \tbtfsc STATUS, Z
 \tmovlw 1
 ...
-            push @code, $comp_code if $op eq 'COMP';
-            push @code, $not_code if $op eq 'NOT';
-        } else {
-            carp "Unable to handle $expr\n";
-        }
-    }
-    push @code, "\tmovwf $var1\n";
-    return join("\n", @code);
 }
 
-## FIXME: handle carry bit
-sub selfadd_literal {
-    my ($self, $var, $val) = @_;
-    return "\n" if "$val" eq '0';
+sub op_COMP {
+    my ($self, $var2) = @_;
     return << "...";
-\t;;moves $val to W
-\tmovlw D'$val'
-\taddwf $var, F
+\t;;;; generate code for ~$var2
+\tcomf $var2, W
 ...
 }
 
+sub op_ADD_ASSIGN_literal {
+    my ($self, $var, $val) = @_;
+    my $b1 = POSIX::ceil($self->address_bits($var) / 8);
+    my $nibbles = 2 * $b1;
+    my $code = sprintf "\t;; $var = $var + 0x%0${nibbles}X\n", $val;
+    return $code if $val == 0;
+    # we expect b1 == 1,2,4,8
+    my $b2 = 1 if $val < 2 ** 8;
+    $b2 = 2 if ($val < 2 ** 16 and $val >= 2 ** 8);
+    $b2 = 4 if ($val < 2 ** 32 and $val >= 2 ** 16);
+    $b2 = 8 if ($val < 2 ** 64 and $val >= 2 ** 32);
+    if ($b1 > $b2) {
+    } elsif ($b1 < $b2) {
+
+    } else {
+        # $b1 == $b2
+        my $valbyte = $val & ((2 ** 8) - 1);
+        $code .= sprintf "\t;; add 0x%02X to byte[0]\n", $valbyte;
+        $code .= sprintf "\tmovlw 0x%02X\n\taddwf $var, F\n", $valbyte if $valbyte > 0;
+        $code .= sprintf "\tbcf STATUS, C\n" if $valbyte == 0;
+        for (2 .. $b1) {
+            my $k = $_ * 8;
+            my $i = $_ - 1;
+            my $j = $i * 8;
+            # get the right byte. 64-bit math requires bigint
+            $valbyte = (($val & ((2 ** $k) - 1)) & (2 ** $k - 2 ** $j)) >> $j;
+            $code .= sprintf "\t;; add 0x%02X to byte[$i]\n", $valbyte;
+            $code .= "\tbtfsc STATUS, C\n\tincf $var + $i, F\n";
+            $code .= sprintf "\tmovlw 0x%02X\n\taddwf $var + $i, F\n", $valbyte if $valbyte > 0;
+        }
+    }
+    return $code;
+}
+
 ## FIXME: handle carry bit
-sub selfadd_variable {
+sub op_ADD_ASSIGN_variable {
     my ($self, $var, $var2) = @_;
     return << "...";
 \t;;moves $var2 to W
@@ -944,97 +1093,92 @@ sub selfadd_variable {
 ...
 }
 
-sub increment {
+sub op_INC {
     my ($self, $var) = @_;
-    return <<"..."
-\t;; increments $var in place
-\tincf $var, 1
+    # we expect b1 == 1,2,4,8
+    my $b1 = POSIX::ceil($self->address_bits($var) / 8);
+    my $code = "\t;; increments $var in place\n";
+    $code .= "\t;; increment byte[0]\n\tincf $var, F\n";
+    for (2 .. $b1) {
+        my $j = $_ - 1;
+        my $i = $_ - 2;
+        $code .= << "...";
+\t;; increment byte[$j] iff byte[$i] == 0
+\tbtfsc STATUS, Z
+\tincf $var + $j, F
 ...
-}
-
-sub decrement {
-    my ($self, $var) = @_;
-    return <<"..."
-\t;; decrements $var in place
-\tdecf $var, 1
-...
-}
-
-sub check_eq {
-    my ($self, $lhs, $rhs, $predicate, $ccount) = @_;
-    my $pred = '';
-    my $end_label = "_end_conditional_$ccount";
-    my ($false_label, $true_label);
-    if (ref $predicate eq 'ARRAY') {
-        foreach my $p (@$predicate) {
-            $false_label = $1 if $p =~ /LABEL::(\w+)::False/;
-            $true_label = $1 if $p =~ /LABEL::(\w+)::True/;
-            last if (defined $false_label and defined $true_label);
-        }
-        if (defined $false_label) {
-            $pred .= "\tgoto $false_label\n";
-        } else {
-            $pred .= "\tgoto $end_label\n";
-        }
-        if (defined $true_label) {
-            $pred .= "\tgoto $true_label\n";
-        } else {
-            $pred .= "\tgoto $end_label\n";
-        }
-    } else {
-        carp "Predicate has to be an array";
-        return;
     }
-    $pred .= "$end_label:\n";
-    if ($lhs =~ /OP::/ || $rhs =~ /OP::/) {
+    return $code;
+}
 
-    } else {
-        if ($lhs !~ /^\d+$/ and $rhs !~ /^\d+$/) {
-            # lhs and rhs are variables
-            $rhs = uc $rhs;
-            $lhs = uc $lhs;
-            return << "...";
+sub op_DEC {
+    my ($self, $var) = @_;
+    my $b1 = POSIX::ceil($self->address_bits($var) / 8);
+    my $code = "\t;; decrements $var in place\n";
+    $code .= "\tmovf $var, W\n" if $b1 > 1;
+    for (2 .. $b1) {
+        my $i = $_ - 1;
+        my $j = $i - 1;
+        $code .= << "...";
+\t;; decrement byte[$i] iff byte[$j] == 0
+\tbtfsc STATUS, Z
+\tdecf $var + $i
+...
+    }
+    $code .= "\t;; decrement byte[0]\n\tdecf $var, W\n";
+    return $code;
+}
+
+sub op_EQ {
+    my ($self, $lhs, $rhs, %extra) = @_;
+    my $pred = '';
+    $pred .= "\tgoto $extra{FALSE}\n" if defined $extra{FALSE};
+    $pred .= "\tgoto $extra{TRUE}\n" if defined $extra{TRUE};
+    $pred .= "$extra{END}:\n" if defined $extra{END};
+    if ($lhs !~ /^\d+$/ and $rhs !~ /^\d+$/) {
+        # lhs and rhs are variables
+        $rhs = uc $rhs;
+        $lhs = uc $lhs;
+        return << "...";
 \tbcf STATUS, C
 \tmovf $rhs, W
 \txorwf $lhs, W
 \tbtfss STATUS, Z ;; they are equal
 $pred
 ...
-        } elsif ($rhs !~ /^\d+$/ and $lhs =~ /^\d+$/) {
-            # rhs is variable and lhs is a literal
-            $rhs = uc $rhs;
-            return << "...";
+    } elsif ($rhs !~ /^\d+$/ and $lhs =~ /^\d+$/) {
+        # rhs is variable and lhs is a literal
+        $rhs = uc $rhs;
+        return << "...";
 \tmovf $rhs, W
 \txorlw $lhs
 \tbtfss STATUS, Z ;; $rhs == $lhs ?
 $pred
 ...
-        } elsif ($rhs =~ /^\d+$/ and $lhs !~ /^\d+$/) {
-            # rhs is a literal and lhs is a variable
-            $lhs = uc $lhs;
-            return << "...";
+    } elsif ($rhs =~ /^\d+$/ and $lhs !~ /^\d+$/) {
+        # rhs is a literal and lhs is a variable
+        $lhs = uc $lhs;
+        return << "...";
 \tmovf $lhs, W
 \txorlw $rhs
 \tbtfss STATUS, Z ;; $lhs == $rhs ?
 $pred
 ...
+    } else {
+        # both rhs and lhs are literals
+        if ($lhs == $rhs) {
+            return << "...";
+\tgoto $extra{TRUE}
+$extra{END}:
+...
         } else {
-            # both rhs and lhs are literals
-            if ($lhs == $rhs) {
-                return << "...";
-\tgoto $true_label\n
-$end_label:
+            return << "...";
+\tgoto $extra{FALSE}
+$extra{END}:
 ...
-            } else {
-                return << "...";
-\tgoto $false_label\n
-$end_label:
-...
-            }
         }
     }
 }
-
 
 sub m_debounce_var {
     return <<'...';
@@ -1049,12 +1193,9 @@ DEBOUNCECOUNTER db 0x00
 ...
 }
 sub debounce {
-    my ($self, $inp, $action) = @_;
-    my ($end_label, $action_label);
-    if ($action =~ /LABEL::(\w+)::\w+::\w+::\w+::(\w+)/) {
-        $action_label = $1;
-        $end_label = $2;
-    }
+    my ($self, $inp, %action) = @_;
+    my $action_label = $action{ACTION};
+    my $end_label = $action{END};
     return unless $action_label;
     return unless $end_label;
     my ($port, $portbit);
@@ -1182,8 +1323,12 @@ sub adc_read {
 }
 
 sub isr_var {
+    my $self = shift;
+    my ($cb_start, $cb_end) = @{$self->banks->{common_bank}};
+    $cb_start = 0x70 unless $cb_start;
+    $cb_start = sprintf "0x%02X", $cb_start;
     return << "...";
-cblock 0x70 ;; unbanked RAM
+cblock $cb_start ;; unbanked RAM that is common across all banks
 ISR_STATUS
 ISR_W
 endc
@@ -1222,7 +1367,7 @@ _isr_exit:
 }
 
 sub timer_enable {
-    my ($self, $tmr, $scale, $isr) = @_;
+    my ($self, $tmr, $scale, %isr) = @_;
     unless (exists $self->timer_pins->{$tmr}) {
         carp "$tmr is not a timer.";
         return;
@@ -1247,16 +1392,13 @@ sub timer_enable {
 \tbanksel $tmr
 \tclrf $tmr
 ...
-    $code .= "\n$isr_code\n" if $isr;
+    $code .= "\n$isr_code\n" if %isr;
     $code .= "\n$end_code\n";
     my $funcs = {};
     my $macros = {};
-    if ($isr) {
-        my ($end_label, $action_label);
-        if ($isr =~ /LABEL::(\w+)::\w+::\w+::\w+::(\w+)/) {
-            $action_label = $1;
-            $end_label = $2;
-        }
+    if (%isr) {
+        my $action_label = $isr{ISR};
+        my $end_label = $isr{END};
         return unless $action_label;
         return unless $end_label;
         $funcs->{isr_timer} = << "..."
@@ -1290,20 +1432,15 @@ sub timer_disable {
 }
 
 sub timer {
-    my ($self, $action) = @_;
-    my ($end_label, $action_label);
-    if ($action =~ /LABEL::(\w+)::\w+::\w+::\w+::(\w+)/) {
-        $action_label = $1;
-        $end_label = $2;
-    }
-    return unless $action_label;
-    return unless $end_label;
+    my ($self, %action) = @_;
+    return unless exists $action{ACTION};
+    return unless exists $action{END};
     return << "...";
 \tbtfss INTCON, T0IF
-\tgoto $end_label
+\tgoto $action{END}
 \tbcf INTCON, T0IF
-\tgoto $action_label
-$end_label:
+\tgoto $action{ACTION}
+$action{END}:
 ...
 }
 
