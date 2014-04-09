@@ -1,18 +1,18 @@
-package VIC::PIC;
+package VIC::Receiver;
 use strict;
 use warnings;
 use bigint;
 use POSIX ();
 use List::Util qw(max);
+use List::MoreUtils qw(any firstidx);
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
 extends 'Pegex::Tree';
 
 use VIC::PIC::Any;
-#use XXX;
 
 has pic_override => undef;
 has pic => undef;
@@ -24,6 +24,7 @@ has ast => {
     variables => {},
     tmp_variables => {},
     conditionals => 0,
+    tmp_stack_size => 0,
 };
 has intermediate_inline => undef;
 
@@ -40,16 +41,18 @@ sub got_uc_select {
     $self->ast->{include} = $self->pic->include;
     # set the defaults in case the headers are not provided by the user
     $self->ast->{org} = $self->pic->org;
-    $self->ast->{config} = $self->pic->config;
+    $self->ast->{chip_config} = $self->pic->chip_config;
+    $self->ast->{code_config} = $self->pic->code_config;
     return;
 }
 
-sub got_uc_config {
+sub got_pragmas {
     my ($self, $list) = @_;
     $self->flatten($list);
-    $self->pic->update_config(@$list);
+    $self->pic->update_code_config(@$list);
     # get the updated config
-    $self->ast->{config} = $self->pic->config;
+    $self->ast->{chip_config} = $self->pic->chip_config;
+    $self->ast->{code_config} = $self->pic->code_config;
     return;
 }
 
@@ -252,7 +255,8 @@ sub got_conditional_statement {
                 SUBJ => $subj,
                 FALSE => $false_label,
                 TRUE => $true_label,
-                END => $end_label);
+                END => $end_label,
+                SUBCOND => $subcond);
     } else {
         return $self->parser->throw_error("Multiple predicate conditionals not implemented");
     }
@@ -268,30 +272,46 @@ sub got_conditional_statement {
 # so maybe not
 sub got_conditional_subject {
     my ($self, $list) = @_;
-    #TODO: handle complex-conditionals using temp vars
     if (ref $list eq 'ARRAY') {
         $self->flatten($list);
         if (scalar @$list == 1) {
-            return shift @$list;
+            my $var1 = shift @$list;
+            return $var1 if $var1 =~ /^\d+$/;
+            my $vref = $self->ast->{tmp_variables};
+            my $tvar = sprintf "_vic_tmp_%02d", scalar(keys %$vref);
+            $vref->{$tvar} = "OP::${var1}::EQ::1";
+            return $tvar;
         } elsif (scalar @$list == 2) {
             my ($op, $var) = @$list;
             my $vref = $self->ast->{tmp_variables};
-            my $tvar = '_vic_tmp_' . scalar(keys %$vref);
+            my $tvar = sprintf "_vic_tmp_%02d", scalar(keys %$vref);
             $vref->{$tvar} = "OP::${op}::${var}";
             return $tvar;
+        } elsif (scalar @$list == 3) {
+            my ($var1, $op, $var2) = @$list;
+            my $vref = $self->ast->{tmp_variables};
+            my $tvar = sprintf "_vic_tmp_%02d", scalar(keys %$vref);
+            $vref->{$tvar} = "OP::${var1}::${op}::${var2}";
+            return $tvar;
         } else {
-            # TODO: handle precedence
-            while (scalar @$list >= 3) {
-                my $var1 = shift @$list;
-                my $op = shift @$list;
-                my $var2 = shift @$list;
-                my $vref = $self->ast->{tmp_variables};
-                my $tvar = '_vic_tmp_' . scalar(keys %$vref);
-                $vref->{$tvar} = "OP::${var1}::${op}::${var2}";
-                $vref->{$tvar} = "OP::${var1}::${op}::${var2}";
-                unshift @$list, $tvar;
+            # handle precedence with left-to-right association
+            my @arr = @$list;
+            my $idx = firstidx { $_ =~ /^GE|GT|LE|LT|EQ|NE$/ } @arr;
+            while ($idx >= 0) {
+                my $res = $self->got_conditional_subject([$arr[$idx - 1], $arr[$idx], $arr[$idx + 1]]);
+                $arr[$idx - 1] = $res;
+                splice @arr, $idx, 2; # remove the extra elements
+                $idx = firstidx { $_ =~ /^GE|GT|LE|LT|EQ|NE$/ } @arr;
             }
-            return $list;
+            $idx = firstidx { $_ =~ /^AND|OR$/ } @arr;
+            while ($idx >= 0) {
+                my $res = $self->got_conditional_subject([$arr[$idx - 1], $arr[$idx], $arr[$idx + 1]]);
+                $arr[$idx - 1] = $res;
+                splice @arr, $idx, 2; # remove the extra elements
+                $idx = firstidx { $_ =~ /^AND|OR$/ } @arr;
+            }
+#            YYY $self->ast->{tmp_variables};
+            return $self->got_conditional_subject([@arr]);
         }
     } else {
         return $list;
@@ -305,28 +325,60 @@ sub got_expr_value {
     if (ref $list eq 'ARRAY') {
         $self->flatten($list);
         if (scalar @$list == 1) {
-            return shift @$list;
+            my $val = shift @$list;
+            if ($val =~ /MOP::/) {
+                my $vref = $self->ast->{tmp_variables};
+                my $tvar = sprintf "_vic_tmp_%02d", scalar(keys %$vref);
+                $vref->{$tvar} = $val;
+                return $tvar;
+            } else {
+                return $val;
+            }
         } elsif (scalar @$list == 2) {
             my ($op, $var) = @$list;
             my $vref = $self->ast->{tmp_variables};
-            my $tvar = '_vic_tmp_' . scalar(keys %$vref);
+            my $tvar = sprintf "_vic_tmp_%02d", scalar(keys %$vref);
             $vref->{$tvar} = "OP::${op}::${var}";
             return $tvar;
+        } elsif (scalar @$list == 3) {
+            my ($var1, $op, $var2) = @$list;
+            my $vref = $self->ast->{tmp_variables};
+            my $tvar = sprintf "_vic_tmp_%02d", scalar(keys %$vref);
+            $vref->{$tvar} = "OP::${var1}::${op}::${var2}";
+            return $tvar;
         } else {
-            # TODO: handle precedence
-            while (scalar @$list >= 3) {
-                # using Quadruples method as per Dragon book Chapter 8 Page 470
-                my $var1 = shift @$list;
-                my $op = shift @$list;
-                my $var2 = shift @$list;
-                my $vref = $self->ast->{tmp_variables};
-                my $tvar = '_vic_tmp_' . scalar(keys %$vref);
-                $vref->{$tvar} = "OP::${var1}::${op}::${var2}";
-                unshift @$list, $tvar;
+            # handle precedence with left-to-right association
+            my @arr = @$list;
+            my $idx = firstidx { $_ =~ /^MUL|DIV|MOD$/ } @arr;
+            while ($idx >= 0) {
+                my $res = $self->got_expr_value([$arr[$idx - 1], $arr[$idx], $arr[$idx + 1]]);
+                $arr[$idx - 1] = $res;
+                splice @arr, $idx, 2; # remove the extra elements
+                $idx = firstidx { $_ =~ /^MUL|DIV|MOD$/ } @arr;
+            }
+            $idx = firstidx { $_ =~ /^ADD|SUB$/ } @arr;
+            while ($idx >= 0) {
+                my $res = $self->got_expr_value([$arr[$idx - 1], $arr[$idx], $arr[$idx + 1]]);
+                $arr[$idx - 1] = $res;
+                splice @arr, $idx, 2; # remove the extra elements
+                $idx = firstidx { $_ =~ /^ADD|SUB$/ } @arr;
+            }
+            $idx = firstidx { $_ =~ /^SHL|SHR$/ } @arr;
+            while ($idx >= 0) {
+                my $res = $self->got_expr_value([$arr[$idx - 1], $arr[$idx], $arr[$idx + 1]]);
+                $arr[$idx - 1] = $res;
+                splice @arr, $idx, 2; # remove the extra elements
+                $idx = firstidx { $_ =~ /^SHL|SHR$/ } @arr;
+            }
+            $idx = firstidx { $_ =~ /^BAND|BXOR|BOR$/ } @arr;
+            while ($idx >= 0) {
+                my $res = $self->got_expr_value([$arr[$idx - 1], $arr[$idx], $arr[$idx + 1]]);
+                $arr[$idx - 1] = $res;
+                splice @arr, $idx, 2; # remove the extra elements
+                $idx = firstidx { $_ =~ /^BAND|BXOR|BOR$/ } @arr;
             }
 #            YYY $self->ast->{tmp_variables};
-#            YYY $list;
-            return $list;
+            return $self->got_expr_value([@arr]);
         }
     } else {
         return $list;
@@ -341,6 +393,13 @@ sub got_math_operator {
     return 'DIV' if $op eq '/';
     return 'MOD' if $op eq '%';
     return $self->parser->throw_error("Math operator '$op' is not supported");
+}
+
+sub got_shift_operator {
+    my ($self, $op) = @_;
+    return 'SHL' if $op eq '<<';
+    return 'SHR' if $op eq '>>';
+    return $self->parser->throw_error("Shift operator '$op' is not supported");
 }
 
 sub got_bit_operator {
@@ -378,6 +437,10 @@ sub got_complement_operator {
 
 sub got_assign_operator {
     my ($self, $op) = @_;
+    if (ref $op eq 'ARRAY') {
+        $self->flatten($op);
+        $op = shift @$op;
+    }
     return 'ASSIGN' if $op eq '=';
     return 'ADD_ASSIGN'  if $op eq '+=';
     return 'SUB_ASSIGN'  if $op eq '-=';
@@ -387,6 +450,8 @@ sub got_assign_operator {
     return 'BXOR_ASSIGN' if $op eq '^=';
     return 'BOR_ASSIGN'  if $op eq '|=';
     return 'BAND_ASSIGN' if $op eq '&=';
+    return 'SHL_ASSIGN' if $op eq '<<=';
+    return 'SHR_ASSIGN' if $op eq '>>=';
     return $self->parser->throw_error("Assignment operator '$op' is not supported");
 }
 
@@ -403,11 +468,10 @@ sub got_modifier_variable {
     $self->flatten($list) if ref $list eq 'ARRAY';
     $modifier = shift @$list;
     $varname = shift @$list;
-    $self->parser->throw_error("Modifying operator '$modifier' not supported") unless
-        $self->pic->validate_modifier($modifier);
     $modifier = uc $modifier;
-    #TODO: figure out a better way
-    return "MOP::$modifier\::$varname";
+    my $method = $self->pic->validate_modifier($modifier);
+    $self->parser->throw_error("Modifying operator '$modifier' not supported") unless $method;
+    return $self->got_expr_value(["MOP::${modifier}::${varname}"]);
 }
 
 sub got_validated_variable {
@@ -420,8 +484,7 @@ sub got_validated_variable {
         $varname = $list;
     }
     return $varname if $self->pic->validate($varname);
-    #return $self->parser->throw_error("'$varname' is not a valid part of the " . uc $self->pic->type);
-    return;
+    return $self->parser->throw_error("'$varname' is not a valid part of the " . uc $self->pic->type);
 }
 
 sub got_variable {
@@ -433,7 +496,7 @@ sub got_variable {
     # we do not want to store it yet and definitely not store the size yet
     # we could remove this if we set the size after the code generation or so
     # but that may lead to more complexity. this is much easier
-    return $varname if $parent eq 'uc_config';
+    return $varname if $parent eq 'pragmas';
     $self->ast->{variables}->{$varname} = {
         name => uc $varname,
         scope => $self->ast->{block_stack}->[-1],
@@ -462,7 +525,12 @@ sub got_number {
     # if it is a hexadecimal number we can just convert it to number using int()
     # since hex is returned here as a string
     return hex($list) if $list =~ /0x|0X/;
-    return int($list);
+    my $val = int($list);
+    return $val if $val >= 0;
+    ##TODO: check the negative value
+    my $bits = (2 ** $self->pic->address_bits) - 1;
+    $val = sprintf "0x%02X", $val;
+    return hex($val) & $bits;
 }
 
 # convert the number to appropriate units
@@ -523,7 +591,7 @@ sub generate_code_unary_expr {
     $self->parser->throw_error("Invalid operator '$op' in intermediate code") unless $self->pic->can($method);
     # check if temporary variable or not
     if (exists $ast->{variables}->{$varname}) {
-        my $nvar = $ast->{variables}->{$varname}->{name} || uc $varname;
+        my $nvar = $ast->{variables}->{$varname}->{name} || $varname;
         my ($code, $funcs, $macros) = $self->pic->$method($nvar);
         return $self->parser->throw_error("Error in intermediate code '$line'") unless $code;
         push @code, "\t;; $line" if $self->intermediate_inline;
@@ -543,17 +611,23 @@ sub generate_code_operations {
     if (scalar @args == 2) {
         $op = shift @args;
         $var1 = shift @args;
-        $var1 = uc $var1;
     } elsif (scalar @args == 3) {
         $var1 = shift @args;
-        $var1 = uc $var1;
         $op = shift @args;
         $var2 = shift @args;
-        $var2 = uc $var2;
     } else {
         return $self->parser->throw_error("Error in intermediate code '$line'");
     }
-    my $method = $self->pic->validate_operator($op) if defined $op;
+    if (exists $extra{STACK}) {
+        if (defined $var1) {
+            $var1 = $extra{STACK}->{$var1} || $var1;
+        }
+        if (defined $var2) {
+            $var2 = $extra{STACK}->{$var2} || $var2;
+        }
+    }
+    my $method = $self->pic->validate_operator($op) if $tag eq 'OP';
+    $method = $self->pic->validate_modifier($op) if $tag eq 'MOP';
     $self->parser->throw_error("Invalid operator '$op' in intermediate code") unless $self->pic->can($method);
     push @code, "\t;; $line" if $self->intermediate_inline;
     my ($code, $funcs, $macros) = $self->pic->$method($var1, $var2, %extra);
@@ -637,33 +711,48 @@ sub generate_code_assign_expr {
             my $tmp_code = $ast->{tmp_variables}->{$rhs};
             my @deps = $self->find_tmpvar_dependencies($rhs);
             my @vdeps = $self->find_var_dependencies($rhs);
-            push @code, "\t;; TMP_VAR DEPS - $rhs, ". join (',', @deps) if @deps;
-            push @code, "\t;; VAR DEPS - ". join (',', @vdeps) if @vdeps;
-            push @code, "\t;; $rhs = $tmp_code\n";
+            push @deps, $rhs if @deps;
+            if ($self->intermediate_inline) {
+                push @code, "\t;; TMP_VAR DEPS - $rhs, ". join (',', @deps) if @deps;
+                push @code, "\t;; VAR DEPS - ". join (',', @vdeps) if @vdeps;
+                foreach (sort @deps) {
+                    my $tcode = $ast->{tmp_variables}->{$_};
+                    push @code, "\t;; $_ = $tcode";
+                }
+                push @code, "\t;; $line";
+            }
             if (scalar @deps) {
-                # TODO: have to use stack or check for it
+                $ast->{tmp_stack_size} = max(scalar(@deps), $ast->{tmp_stack_size});
+                ## it is assumed that the dependencies and intermediate code are
+                #arranged in expected order
+                # TODO: bits check
+                my $counter = 0;
+                my %tmpstack = map { $_ => 'VIC_STACK + ' . $counter++ } sort(@deps);
+                foreach (sort @deps) {
+                    my $tcode = $ast->{tmp_variables}->{$_};
+                    my $result = $tmpstack{$_};
+                    $result = uc $varname if $_ eq $rhs;
+                    my @newcode = $self->generate_code_operations($tcode,
+                                        STACK => \%tmpstack, RESULT => $result) if $tcode;
+                    push @code, "\t;; $_ = $tcode" if $self->intermediate_inline;
+                    push @code, @newcode if @newcode;
+                }
             } else {
                 # no tmp-var dependencies
-                my $use_stack = $self->do_i_use_stack(@vdeps);
+                my $use_stack = $self->do_i_use_stack(@vdeps) unless scalar @deps;
                 unless ($use_stack) {
-                    my @newcode = $self->generate_code_operations($tmp_code);
+                    my @newcode = $self->generate_code_operations($tmp_code,
+                                                            RESULT => uc $varname);
                     push @code, @newcode if @newcode;
-                    my ($code) = $self->pic->op_ASSIGN_w(uc $varname);
-                    return $self->parser->throw_error("Error in intermediate code '$tmp_code'") unless $code;
-                    push @code, "\t;; $line" if $self->intermediate_inline;
-                    push @code, $code if $code;
                 } else {
                     # TODO: stack
+                    XXX @vdeps;
                 }
             }
         } else {
-            my $suffix = '';
-            $suffix = '_literal' if $rhs =~ /^\d+$/;
-            $suffix = '_variable' if exists $ast->{variables}->{$rhs};
             my $method = $self->pic->validate_operator($op);
-            $method .= $suffix if $method;
             $self->parser->throw_error("Invalid operator '$op' in intermediate code") unless $self->pic->can($method);
-            my $nvar = $ast->{variables}->{$varname}->{name} || uc $varname;
+            my $nvar = $ast->{variables}->{$varname}->{name} || $varname;
             my ($code, $funcs, $macros) = $self->pic->$method($nvar, $rhs);
             return $self->parser->throw_error("Error in intermediate code '$line'") unless $code;
             push @code, "\t;; $line" if $self->intermediate_inline;
@@ -710,26 +799,66 @@ sub generate_code_blocks {
 sub generate_code_conditionals {
     my ($self, @condblocks) = @_;
     my @code = ();
-    if (scalar @condblocks == 1) {
-        my $line = shift @condblocks;
+    my $ast = $self->ast;
+    my $end_label;
+    my $blockcount = scalar @condblocks;
+    my $index = 0;
+    foreach my $line (@condblocks) {
+        push @code, "\t;; $line" if $self->intermediate_inline;
         my %hh = split /::/, $line;
-        my $ast = $self->ast;
         my $subj = $hh{SUBJ};
+        $index++ if $hh{SUBCOND};
+        # for multiple if-else-if-else we adjust the labels
+        # for single ones we do not
+        if ($blockcount > 1) {
+            my $el = "$hh{END}_$index"; # new label
+            $hh{FALSE} = $el if $hh{FALSE} eq $hh{END};
+            $hh{TRUE} = $el if $hh{TRUE} eq $hh{END};
+            $end_label = $hh{END} unless defined $end_label;
+            $hh{END} = $el;
+        }
         if ($subj =~ /^\d+?$/) { # if subject is a literal
-            push @code, "\t;; $line" if $self->intermediate_inline;
+            my $code = '';
+            push @code, "\t;; $line\n" if $self->intermediate_inline;
+            if ($subj eq 0) {
+                # is false
+                $code .= "\tgoto $hh{FALSE}\n" if $hh{FALSE};
+            } else {
+                # is true
+                $code .= "\tgoto $hh{TRUE}\n" if $hh{TRUE};
+            }
+            $code .= "\tgoto $hh{END}\n";
+            push @code, $code;
         } elsif (exists $ast->{variables}->{$subj}) {
-
+            ## we will never get here actually since we have eliminated this
+            #possibility
+            XXX \%hh;
         } elsif (exists $ast->{tmp_variables}->{$subj}) {
             my $tmp_code = $ast->{tmp_variables}->{$subj};
             my @deps = $self->find_tmpvar_dependencies($subj);
             my @vdeps = $self->find_var_dependencies($subj);
+            push @deps, $subj if @deps;
             if ($self->intermediate_inline) {
                 push @code, "\t;; TMP_VAR DEPS - $subj, ". join (',', @deps) if @deps;
                 push @code, "\t;; VAR DEPS - ". join (',', @vdeps) if @vdeps;
                 push @code, "\t;; $subj = $tmp_code\n";
             }
             if (scalar @deps) {
-                # TODO: have to use stack or check for it
+                $ast->{tmp_stack_size} = max(scalar(@deps), $ast->{tmp_stack_size});
+                ## it is assumed that the dependencies and intermediate code are
+                #arranged in expected order
+                # TODO: bits check
+                my $counter = 0;
+                my %tmpstack = map { $_ => 'VIC_STACK + ' . $counter++ } sort(@deps);
+                $counter = 0; # reset
+                foreach (sort @deps) {
+                    my $tcode = $ast->{tmp_variables}->{$_};
+                    my %extra = (%hh, COUNTER => $counter++);
+                    $extra{RESULT} = $tmpstack{$_} if $_ ne $subj;
+                    my @newcode = $self->generate_code_operations($tcode,
+                                                STACK => \%tmpstack, %extra) if $tcode;
+                    push @code, @newcode if @newcode;
+                }
             } else {
                 # no tmp-var dependencies
                 my $use_stack = $self->do_i_use_stack(@vdeps);
@@ -740,12 +869,14 @@ sub generate_code_conditionals {
                         unless @newcode;
                 } else {
                     # TODO: stack
+                    XXX \%hh;
                 }
             }
         } else {
             return $self->parser->throw_error("Error in intermediate code '$line'");
         }
     }
+    push @code, "$end_label:\n" if defined $end_label and $blockcount > 1;
     return @code;
 }
 
@@ -800,10 +931,19 @@ sub final {
     my $variables = '';
     my $vhref = $ast->{variables};
     $variables .= "GLOBAL_VAR_UDATA udata\n" if keys %$vhref;
+    my @global_vars = ();
     foreach my $var (sort(keys %$vhref)) {
         # should we care about scope ?
-        # FIXME: initialized variables ?
         $variables .= "$vhref->{$var}->{name} res $vhref->{$var}->{size}\n";
+        push @global_vars, $vhref->{$var}->{name};
+    }
+    if ($ast->{tmp_stack_size}) {
+        $variables .= "VIC_STACK res $ast->{tmp_stack_size}\t;; temporary stack\n";
+    }
+    #XXX $ast->{code_config}->{variable};
+    if ($ast->{code_config}->{variable}->{export} and scalar @global_vars) {
+        # export the variables
+        $variables .= "\tglobal ". join (", ", @global_vars) . "\n";
     }
     my $macros = '';
     foreach my $mac (sort(keys %{$ast->{macros}})) {
@@ -858,7 +998,7 @@ $variables
 ;;;; generated code for macros
 $macros
 
-$ast->{config}
+$ast->{chip_config}
 
 \torg $ast->{org}
 
@@ -881,7 +1021,7 @@ $funcs
 
 =head1 NAME
 
-VIC::PIC
+VIC::Receiver
 
 =head1 SYNOPSIS
 

@@ -4,8 +4,8 @@ use t::TestVIC tests => 1, debug => 0;
 my $input = <<'...';
 PIC P16F690;
 
-config debounce count = 5;
-config debounce delay = 1ms;
+pragma debounce count = 5;
+pragma debounce delay = 1ms;
 
 Main {
     digital_output PORTC;
@@ -28,19 +28,19 @@ my $output = <<'...';
 GLOBAL_VAR_UDATA udata
 DISPLAY res 1
 
-;;;;;; DEBOUNCE VARIABLES ;;;;;;;
+;;;;;; VIC_VAR_DEBOUNCE VARIABLES ;;;;;;;
 
-DEBOUNCE_VAR_IDATA idata
+VIC_VAR_DEBOUNCE_VAR_IDATA idata
 ;; initialize state to 1
-DEBOUNCESTATE db 0x01
+VIC_VAR_DEBOUNCESTATE db 0x01
 ;; initialize counter to 0
-DEBOUNCECOUNTER db 0x00
+VIC_VAR_DEBOUNCECOUNTER db 0x00
 
 
 ;;;;;; DELAY FUNCTIONS ;;;;;;;
 
-DELAY_VAR_UDATA udata
-DELAY_VAR   res 3
+VIC_VAR_DELAY_UDATA udata
+VIC_VAR_DELAY   res 3
 
 
 
@@ -57,13 +57,13 @@ m_delay_ms macro msecs
     variable msecs_1 = 0
 msecs_1 = (msecs * D'13') / D'10'
     movlw   msecs_1
-    movwf   DELAY_VAR + 1
+    movwf   VIC_VAR_DELAY + 1
 _delay_msecs_loop_1:
-    clrf   DELAY_VAR   ;; set to 0 which gets decremented to 0xFF
+    clrf   VIC_VAR_DELAY   ;; set to 0 which gets decremented to 0xFF
 _delay_msecs_loop_0:
-    decfsz  DELAY_VAR, F
+    decfsz  VIC_VAR_DELAY, F
     goto    _delay_msecs_loop_0
-    decfsz  DELAY_VAR + 1, F
+    decfsz  VIC_VAR_DELAY + 1, F
     goto    _delay_msecs_loop_1
     endm
 
@@ -100,34 +100,34 @@ _loop_1:
 
 	;; has debounce state changed to down (bit 0 is 0)
 	;; if yes go to debounce-state-down
-	btfsc   DEBOUNCESTATE, 0
+	btfsc   VIC_VAR_DEBOUNCESTATE, 0
 	goto    _debounce_state_up
 _debounce_state_down:
 	clrw
 	btfss   PORTA, 3
 	;; increment and move into counter
-	incf    DEBOUNCECOUNTER, 0
-	movwf   DEBOUNCECOUNTER
+	incf    VIC_VAR_DEBOUNCECOUNTER, 0
+	movwf   VIC_VAR_DEBOUNCECOUNTER
 	goto    _debounce_state_check
 
 _debounce_state_up:
 	clrw
 	btfsc   PORTA, 3
-	incf    DEBOUNCECOUNTER, 0
-	movwf   DEBOUNCECOUNTER
+	incf    VIC_VAR_DEBOUNCECOUNTER, 0
+	movwf   VIC_VAR_DEBOUNCECOUNTER
 	goto    _debounce_state_check
 
 _debounce_state_check:
-	movf    DEBOUNCECOUNTER, W
-	xorlw   5
+	movf    VIC_VAR_DEBOUNCECOUNTER, W
+	xorlw   0x05
 	;; is counter == 5 ?
 	btfss   STATUS, Z
 	goto _end_action_2
 	;; after 5 straight, flip direction
-	comf    DEBOUNCESTATE, 1
-	clrf    DEBOUNCECOUNTER
+	comf    VIC_VAR_DEBOUNCESTATE, 1
+	clrf    VIC_VAR_DEBOUNCECOUNTER
 	;; was it a key-down
-	btfss   DEBOUNCESTATE, 0
+	btfss   VIC_VAR_DEBOUNCESTATE, 0
 	goto _end_action_2
 	goto _action_2
 _end_action_2:

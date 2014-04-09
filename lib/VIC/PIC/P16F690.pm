@@ -6,7 +6,7 @@ use Carp;
 use POSIX ();
 use Pegex::Base; # use this instead of Mo
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 $VERSION = eval $VERSION;
 
 has type => 'p16f690';
@@ -421,7 +421,7 @@ has pwm_pins => {
     5 => 'P1A',
 };
 
-has config => <<"...";
+has chip_config => <<"...";
 \t__config (_INTRC_OSC_NOCLKOUT & _WDT_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _BOR_OFF & _IESO_OFF & _FCMEN_OFF)
 
 ...
@@ -438,22 +438,25 @@ has code_config => {
     },
     variable => {
         bits => 8, # bits. same as register_size
+        export => 0, # do not export variables
     },
 };
 
-sub update_config {
+sub update_code_config {
     my ($self, $grp, $key, $val) = @_;
     return unless defined $grp;
     $self->code_config->{$grp} = {} unless exists $self->code_config->{$grp};
     my $grpref = $self->code_config->{$grp};
     if ($key eq 'bits') {
-        carp "$val-bits is not supported. Maximum supported size is 64-bit"
-            if $val > 64;
+        $val = 8 unless defined $val;
         $val = 8 if $val <= 8;
         $val = 16 if ($val > 8 and $val <= 16);
         $val = 32 if ($val > 16 and $val <= 32);
+        carp "$val-bits is not supported. Maximum supported size is 64-bit"
+            if $val > 64;
         $val = 64 if $val > 32;
     }
+    $val = 1 unless defined $val;
     if (ref $grpref eq 'HASH') {
         $grpref->{$key} = $val;
     } else {
@@ -494,26 +497,21 @@ sub validate {
 }
 
 sub validate_operator {
-    my ($self, $mod) = @_;
-    my $vmod = "op_$mod" if $mod =~ /^
+    my ($self, $op) = @_;
+    my $vop = "op_$op" if $op =~ /^
             LE | GE | GT | LT | EQ | NE |
             ADD | SUB | MUL | DIV | MOD |
-            BXOR | BOR | BAND | AND | OR |
+            BXOR | BOR | BAND | AND | OR | SHL | SHR |
             ASSIGN | INC | DEC | NOT | COMP
         /x;
-    return $vmod;
+    return $vop;
 }
 
 sub validate_modifier {
     my ($self, $mod, $suffix) = @_;
     my $vmod = "op_$mod" if $mod =~ /^
-            LE | GE | GT | LT | EQ | NE |
-            ADD | SUB | MUL | DIV | MOD |
-            BXOR | BOR | BAND | AND | OR |
-            ASSIGN | INC | DEC | NOT | COMP
+            SQRT | HIGH | LOW
         /x;
-    $vmod = uc $mod unless defined $vmod;
-    $vmod .= "_$suffix" if defined $suffix;
     return $vmod;
 }
 
@@ -556,8 +554,7 @@ sub write {
 \tcomf PORT$port, 1
 ...
         }
-        return $self->op_ASSIGN_literal("PORT$port", $val) if ($val =~ /^\d+$/);
-        return $self->op_ASSIGN_variable("PORT$port", uc $val);
+        return $self->op_ASSIGN("PORT$port", $val);
     } elsif (exists $self->pins->{$outp}) {
         my ($port, $portbit) = @{$self->pins->{$outp}};
         if ($val =~ /^\d+$/) {
@@ -565,11 +562,10 @@ sub write {
             return "\tbsf PORT$port, $portbit\n" if "$val" eq '1';
             carp "$val cannot be applied to a pin $outp";
         }
-        return $self->op_ASSIGN_variable("PORT$port", uc $val);
+        return $self->op_ASSIGN("PORT$port", $val);
     } elsif ($self->validate($outp)) {
         my $code = "\tbanksel $outp\n";
-        $code .= ($val =~ /^\d+$/) ? $self->op_ASSIGN_literal($outp, $val) :
-                                    $self->op_ASSIGN_variable($outp, uc $val);
+        $code .= $self->op_ASSIGN($outp, $val);
         return $code;
     } else {
         carp "Cannot find $outp in the list of ports or pins";
@@ -674,8 +670,8 @@ sub m_delay_var {
     return <<'...';
 ;;;;;; DELAY FUNCTIONS ;;;;;;;
 
-DELAY_VAR_UDATA udata
-DELAY_VAR   res 3
+VIC_VAR_DELAY_UDATA udata
+VIC_VAR_DELAY   res 3
 
 ...
 }
@@ -693,9 +689,9 @@ m_delay_us macro usecs
 if (usecs > D'6')
 usecs_1 = usecs / D'3'
     movlw   usecs_1
-    movwf   DELAY_VAR
+    movwf   VIC_VAR_DELAY
 _delay_usecs_loop_0:
-    decfsz  DELAY_VAR, F
+    decfsz  VIC_VAR_DELAY, F
     goto    _delay_usecs_loop_0
 else
     while usecs_1 < usecs
@@ -711,9 +707,9 @@ sub m_delay_wus {
     return <<'...';
 m_delay_wus macro
     local _delayw_usecs_loop_0
-    movwf   DELAY_VAR
+    movwf   VIC_VAR_DELAY
 _delayw_usecs_loop_0:
-    decfsz  DELAY_VAR, F
+    decfsz  VIC_VAR_DELAY, F
     goto    _delayw_usecs_loop_0
     endm
 ...
@@ -732,13 +728,13 @@ m_delay_ms macro msecs
     variable msecs_1 = 0
 msecs_1 = (msecs * D'13') / D'10'
     movlw   msecs_1
-    movwf   DELAY_VAR + 1
+    movwf   VIC_VAR_DELAY + 1
 _delay_msecs_loop_1:
-    clrf   DELAY_VAR   ;; set to 0 which gets decremented to 0xFF
+    clrf   VIC_VAR_DELAY   ;; set to 0 which gets decremented to 0xFF
 _delay_msecs_loop_0:
-    decfsz  DELAY_VAR, F
+    decfsz  VIC_VAR_DELAY, F
     goto    _delay_msecs_loop_0
-    decfsz  DELAY_VAR + 1, F
+    decfsz  VIC_VAR_DELAY + 1, F
     goto    _delay_msecs_loop_1
     endm
 ...
@@ -748,13 +744,13 @@ sub m_delay_wms {
     return <<'...';
 m_delay_wms macro
     local _delayw_msecs_loop_0, _delayw_msecs_loop_1
-    movwf   DELAY_VAR + 1
+    movwf   VIC_VAR_DELAY + 1
 _delayw_msecs_loop_1:
-    clrf   DELAY_VAR   ;; set to 0 which gets decremented to 0xFF
+    clrf   VIC_VAR_DELAY   ;; set to 0 which gets decremented to 0xFF
 _delayw_msecs_loop_0:
-    decfsz  DELAY_VAR, F
+    decfsz  VIC_VAR_DELAY, F
     goto    _delayw_msecs_loop_0
-    decfsz  DELAY_VAR + 1, F
+    decfsz  VIC_VAR_DELAY + 1, F
     goto    _delayw_msecs_loop_1
     endm
 ...
@@ -774,17 +770,17 @@ m_delay_s macro secs
     variable secs_1 = 0
 secs_1 = secs * D'1000000' / D'197379'
     movlw   secs_1
-    movwf   DELAY_VAR + 2
+    movwf   VIC_VAR_DELAY + 2
 _delay_secs_loop_2:
-    clrf    DELAY_VAR + 1   ;; set to 0 which gets decremented to 0xFF
+    clrf    VIC_VAR_DELAY + 1   ;; set to 0 which gets decremented to 0xFF
 _delay_secs_loop_1:
-    clrf    DELAY_VAR   ;; set to 0 which gets decremented to 0xFF
+    clrf    VIC_VAR_DELAY   ;; set to 0 which gets decremented to 0xFF
 _delay_secs_loop_0:
-    decfsz  DELAY_VAR, F
+    decfsz  VIC_VAR_DELAY, F
     goto    _delay_secs_loop_0
-    decfsz  DELAY_VAR + 1, F
+    decfsz  VIC_VAR_DELAY + 1, F
     goto    _delay_secs_loop_1
-    decfsz  DELAY_VAR + 2, F
+    decfsz  VIC_VAR_DELAY + 2, F
     goto    _delay_secs_loop_2
     endm
 ...
@@ -794,17 +790,17 @@ sub m_delay_ws {
     return <<'...';
 m_delay_ws macro
     local _delayw_secs_loop_0, _delayw_secs_loop_1, _delayw_secs_loop_2
-    movwf   DELAY_VAR + 2
+    movwf   VIC_VAR_DELAY + 2
 _delayw_secs_loop_2:
-    clrf    DELAY_VAR + 1   ;; set to 0 which gets decremented to 0xFF
+    clrf    VIC_VAR_DELAY + 1   ;; set to 0 which gets decremented to 0xFF
 _delayw_secs_loop_1:
-    clrf    DELAY_VAR   ;; set to 0 which gets decremented to 0xFF
+    clrf    VIC_VAR_DELAY   ;; set to 0 which gets decremented to 0xFF
 _delayw_secs_loop_0:
-    decfsz  DELAY_VAR, F
+    decfsz  VIC_VAR_DELAY, F
     goto    _delayw_secs_loop_0
-    decfsz  DELAY_VAR + 1, F
+    decfsz  VIC_VAR_DELAY + 1, F
     goto    _delayw_secs_loop_1
-    decfsz  DELAY_VAR + 2, F
+    decfsz  VIC_VAR_DELAY + 2, F
     goto    _delayw_secs_loop_2
     endm
 ...
@@ -888,6 +884,60 @@ sub delay {
     return wantarray ? ($code, $funcs, $macros) : $code;
 }
 
+sub op_SHL {
+    my ($self, $var, $bits, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    if ($var !~ $literal and $bits =~ $literal) {
+        $var = uc $var;
+        $code .= "\t;;;; perform $var << $bits\n";
+        if ($bits == 1) {
+            $code .= "\trlf $var, W\n";
+        } elsif ($bits == 0) {
+            $code .= "\tmovf $var, W\n";
+        } else {
+            carp "Not implemented. use the 'shl' instruction\n";
+            return;
+        }
+    } elsif ($var =~ $literal and $bits =~ $literal) {
+        my $res = $var << $bits;
+        $code .= "\t;;;; perform $var << $bits = $res\n";
+        $code .= sprintf "\tmovlw 0x%02X\n", $res;
+    } else {
+        carp "Unable to handle $var << $bits";
+        return;
+    }
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    return $code;
+}
+
+sub op_SHR {
+    my ($self, $var, $bits, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    if ($var !~ $literal and $bits =~ $literal) {
+        $var = uc $var;
+        $code .= "\t;;;; perform $var >> $bits\n";
+        if ($bits == 1) {
+            $code .= "\trrf $var, W\n";
+        } elsif ($bits == 0) {
+            $code .= "\tmovf $var, W\n";
+        } else {
+            carp "Not implemented. use the 'shr' instruction\n";
+            return;
+        }
+    } elsif ($var =~ $literal and $bits =~ $literal) {
+        my $res = $var >> $bits;
+        $code .= "\t;;;; perform $var >> $bits = $res\n";
+        $code .= sprintf "\tmovlw 0x%02X\n", $res;
+    } else {
+        carp "Unable to handle $var >> $bits";
+        return;
+    }
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    return $code;
+}
+
 sub shl {
     my ($self, $var, $bits) = @_;
     $var = uc $var;
@@ -953,6 +1003,7 @@ sub op_ASSIGN_literal {
     my $bits = $self->address_bits($var);
     my $bytes = POSIX::ceil($bits / 8);
     my $nibbles = 2 * $bytes;
+    $var = uc $var;
     my $code = sprintf "\t;; moves $val (0x%0${nibbles}X) to $var\n", $val;
     if ($val >= 2 ** $bits) {
         carp "Warning: Value $val doesn't fit in $bits-bits";
@@ -982,8 +1033,10 @@ sub op_ASSIGN_literal {
     return $code;
 }
 
-sub op_ASSIGN_variable {
-    my ($self, $var1, $var2) = @_;
+sub op_ASSIGN {
+    my ($self, $var1, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    return $self->op_ASSIGN_literal($var1, $var2) if $var2 =~ $literal;
     my $b1 = POSIX::ceil($self->address_bits($var1) / 8);
     my $b2 = POSIX::ceil($self->address_bits($var2) / 8);
     $var2 = uc $var2;
@@ -1020,38 +1073,55 @@ sub op_ASSIGN_variable {
     } else {
         carp "Warning: should never reach here: $var1 is $b1 bytes and $var2 is $b2 bytes";
     }
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
     return $code;
 }
 
 sub op_ASSIGN_w {
     my ($self, $var) = @_;
     return unless $var;
-    return << "...";
-\tmovwf $var
-...
+    $var = uc $var;
+    return "\tmovwf $var\n";
 }
 
 sub op_NOT {
-    my ($self, $var2) = @_;
+    my $self = shift;
+    my $var2 = shift;
+    my $pred = '';
+    if (@_) {
+        my ($dummy, %extra) = @_;
+        $pred .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    }
+    $var2 = uc $var2;
     return << "...";
 \t;;;; generate code for !$var2
 \tcomf $var2, W
 \tbtfsc STATUS, Z
 \tmovlw 1
+$pred
 ...
 }
 
 sub op_COMP {
-    my ($self, $var2) = @_;
+    my $self = shift;
+    my $var2 = shift;
+    my $pred = '';
+    if (@_) {
+        my ($dummy, %extra) = @_;
+        $pred .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    }
+    $var2 = uc $var2;
     return << "...";
 \t;;;; generate code for ~$var2
 \tcomf $var2, W
+$pred
 ...
 }
 
 sub op_ADD_ASSIGN_literal {
-    my ($self, $var, $val) = @_;
+    my ($self, $var, $val, %extra) = @_;
     my $b1 = POSIX::ceil($self->address_bits($var) / 8);
+    $var = uc $var;
     my $nibbles = 2 * $b1;
     my $code = sprintf "\t;; $var = $var + 0x%0${nibbles}X\n", $val;
     return $code if $val == 0;
@@ -1080,17 +1150,89 @@ sub op_ADD_ASSIGN_literal {
             $code .= sprintf "\tmovlw 0x%02X\n\taddwf $var + $i, F\n", $valbyte if $valbyte > 0;
         }
     }
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
     return $code;
 }
 
-## FIXME: handle carry bit
-sub op_ADD_ASSIGN_variable {
-    my ($self, $var, $var2) = @_;
+## TODO: handle carry bit
+sub op_ADD_ASSIGN {
+    my ($self, $var, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    return $self->op_ADD_ASSIGN_literal($var, $var2, %extra) if $var2 =~ $literal;
+    $var = uc $var;
+    $var2 = uc $var2;
+    my $code = '';
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
     return << "...";
 \t;;moves $var2 to W
 \tmovf $var2, W
 \taddwf $var, F
+$code
 ...
+}
+
+## TODO: handle carry bit
+sub op_SUB_ASSIGN {
+    my ($self, $var, $var2) = @_;
+    my ($code, $funcs, $macros) = $self->op_SUB($var, $var2);
+    $code .= $self->op_ASSIGN_w($var);
+    return wantarray ? ($code, $funcs, $macros) : $code;
+}
+
+sub op_MUL_ASSIGN {
+    my ($self, $var, $var2) = @_;
+    my ($code, $funcs, $macros) = $self->op_MUL($var, $var2);
+    $code .= $self->op_ASSIGN_w($var);
+    return wantarray ? ($code, $funcs, $macros) : $code;
+}
+
+sub op_DIV_ASSIGN {
+    my ($self, $var, $var2) = @_;
+    my ($code, $funcs, $macros) = $self->op_DIV($var, $var2);
+    $code .= $self->op_ASSIGN_w($var);
+    return wantarray ? ($code, $funcs, $macros) : $code;
+}
+
+sub op_MOD_ASSIGN {
+    my ($self, $var, $var2) = @_;
+    my ($code, $funcs, $macros) = $self->op_MOD($var, $var2);
+    $code .= $self->op_ASSIGN_w($var);
+    return wantarray ? ($code, $funcs, $macros) : $code;
+}
+
+sub op_BXOR_ASSIGN {
+    my ($self, $var, $var2) = @_;
+    my ($code, $funcs, $macros) = $self->op_BXOR($var, $var2);
+    $code .= $self->op_ASSIGN_w($var);
+    return wantarray ? ($code, $funcs, $macros) : $code;
+}
+
+sub op_BAND_ASSIGN {
+    my ($self, $var, $var2) = @_;
+    my ($code, $funcs, $macros) = $self->op_BAND($var, $var2);
+    $code .= $self->op_ASSIGN_w($var);
+    return wantarray ? ($code, $funcs, $macros) : $code;
+}
+
+sub op_BOR_ASSIGN {
+    my ($self, $var, $var2) = @_;
+    my ($code, $funcs, $macros) = $self->op_BOR($var, $var2);
+    $code .= $self->op_ASSIGN_w($var);
+    return wantarray ? ($code, $funcs, $macros) : $code;
+}
+
+sub op_SHL_ASSIGN {
+    my ($self, $var, $var2) = @_;
+    my ($code, $funcs, $macros) = $self->op_SHL($var, $var2);
+    $code .= $self->op_ASSIGN_w($var);
+    return wantarray ? ($code, $funcs, $macros) : $code;
+}
+
+sub op_SHR_ASSIGN {
+    my ($self, $var, $var2) = @_;
+    my ($code, $funcs, $macros) = $self->op_SHR($var, $var2);
+    $code .= $self->op_ASSIGN_w($var);
+    return wantarray ? ($code, $funcs, $macros) : $code;
 }
 
 sub op_INC {
@@ -1122,76 +1264,1022 @@ sub op_DEC {
         $code .= << "...";
 \t;; decrement byte[$i] iff byte[$j] == 0
 \tbtfsc STATUS, Z
-\tdecf $var + $i
+\tdecf $var + $i, F
 ...
     }
-    $code .= "\t;; decrement byte[0]\n\tdecf $var, W\n";
+    $code .= "\t;; decrement byte[0]\n\tdecf $var, F\n";
     return $code;
+}
+
+sub op_ADD {
+    my ($self, $var1, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    #TODO: temporary only 8-bit math
+    my ($b1, $b2);
+    if ($var1 !~ $literal and $var2 !~ $literal) {
+        $var1 = uc $var1;
+        $var2 = uc $var2;
+        $b1 = $self->address_bits($var1);
+        $b2 = $self->address_bits($var2);
+        # both are variables
+        $code .= << "...";
+\t;; add $var1 and $var2 without affecting either
+\tmovf $var1, W
+\taddwf $var2, W
+...
+    } elsif ($var1 =~ $literal and $var2 !~ $literal) {
+        $var2 = uc $var2;
+        $var1 = sprintf "0x%02X", $var1;
+        $b2 = $self->address_bits($var2);
+        # var1 is literal and var2 is variable
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; add $var1 and $var2 without affecting $var2
+\tmovf  $var2, W
+\taddlw $var1
+...
+    } elsif ($var1 !~ $literal and $var2 =~ $literal) {
+        $var1 = uc $var1;
+        $var2 = sprintf "0x%02X", $var2;
+        # var2 is literal and var1 is variable
+        $b1 = $self->address_bits($var1);
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; add $var2 and $var1 without affecting $var1
+\tmovf $var1, W
+\taddlw $var2
+...
+    } else {
+        # both are literals
+        # TODO: check for bits
+        my $var3 = $var1 + $var2;
+        $var3 = sprintf "0x%02X", $var3;
+        $code .= << "...";
+\t;; $var1 + $var2 = $var3
+\tmovlw $var3
+...
+    }
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    return $code;
+}
+
+sub op_SUB {
+    my ($self, $var1, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    #TODO: temporary only 8-bit math
+    my ($b1, $b2);
+    if ($var1 !~ $literal and $var2 !~ $literal) {
+        $var1 = uc $var1;
+        $var2 = uc $var2;
+        $b1 = $self->address_bits($var1);
+        $b2 = $self->address_bits($var2);
+        # both are variables
+        $code .= << "...";
+\t;; perform $var1 - $var2 without affecting either
+\tmovf $var2, W
+\tsubwf $var1, W
+...
+    } elsif ($var1 =~ $literal and $var2 !~ $literal) {
+        $var2 = uc $var2;
+        $var1 = sprintf "0x%02X", $var1;
+        $b2 = $self->address_bits($var2);
+        # var1 is literal and var2 is variable
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; perform $var1 - $var2 without affecting $var2
+\tmovf $var2, W
+\tsublw $var1
+...
+    } elsif ($var1 !~ $literal and $var2 =~ $literal) {
+        $var1 = uc $var1;
+        $var2 = sprintf "0x%02X", $var2;
+        # var2 is literal and var1 is variable
+        $b1 = $self->address_bits($var1);
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; perform $var1 - $var2 without affecting $var1
+\tmovlw $var2
+\tsubwf $var1, W
+...
+    } else {
+        # both are literals
+        # TODO: check for bits
+        my $var3 = $var1 - $var2;
+        $var3 = sprintf "0x%02X", $var3;
+        $code .= << "...";
+\t;; $var1 - $var2 = $var3
+\tmovlw $var3
+...
+    }
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    return $code;
+}
+
+sub m_multiply_var {
+    # TODO: do more than 8 bits
+    return << "...";
+;;;;;; VIC_VAR_MULTIPLY VARIABLES ;;;;;;;
+
+VIC_VAR_MULTIPLY_UDATA udata
+VIC_VAR_MULTIPLICAND res 2
+VIC_VAR_MULTIPLIER res 2
+VIC_VAR_PRODUCT res 2
+...
+}
+
+sub m_multiply_macro {
+    return << "...";
+;;;;;; Taken from Microchip PIC examples.
+;;;;;; multiply v1 and v2 using shifting. multiplication of 8-bit values is done
+;;;;;; using 16-bit variables. v1 is a variable and v2 is a constant
+m_multiply_internal macro
+    local _m_multiply_loop_0, _m_multiply_skip
+    clrf VIC_VAR_PRODUCT
+    clrf VIC_VAR_PRODUCT + 1
+_m_multiply_loop_0:
+    rrf VIC_VAR_MULTIPLICAND, F
+    btfss STATUS, C
+    goto _m_multiply_skip
+    movf VIC_VAR_MULTIPLIER + 1, W
+    addwf VIC_VAR_PRODUCT + 1, F
+    movf VIC_VAR_MULTIPLIER, W
+    addwf VIC_VAR_PRODUCT, F
+    btfsc STATUS, C
+    incf VIC_VAR_PRODUCT + 1, F
+_m_multiply_skip:
+    bcf STATUS, C
+    rlf VIC_VAR_MULTIPLIER, F
+    rlf VIC_VAR_MULTIPLIER + 1, F
+    movf VIC_VAR_MULTIPLICAND, F
+    btfss STATUS, Z
+    goto _m_multiply_loop_0
+    movf VIC_VAR_PRODUCT, W
+    endm
+;;;;;;; v1 is variable and v2 is literal
+m_multiply_1 macro v1, v2
+    movf v1, W
+    movwf VIC_VAR_MULTIPLIER
+    clrf VIC_VAR_MULTIPLIER + 1
+    movlw v2
+    movwf VIC_VAR_MULTIPLICAND
+    clrf VIC_VAR_MULTIPLICAND + 1
+    m_multiply_internal
+    endm
+;;;;;; multiply v1 and v2 using shifting. multiplication of 8-bit values is done
+;;;;;; using 16-bit variables. v1 and v2 are variables
+m_multiply_2 macro v1, v2
+    movf v1, W
+    movwf VIC_VAR_MULTIPLIER
+    clrf VIC_VAR_MULTIPLIER + 1
+    movf v2, W
+    movwf VIC_VAR_MULTIPLICAND
+    clrf VIC_VAR_MULTIPLICAND + 1
+    m_multiply_internal
+    endm
+...
+}
+
+sub op_MUL {
+    my ($self, $var1, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    #TODO: temporary only 8-bit math
+    my ($b1, $b2);
+    if ($var1 !~ $literal and $var2 !~ $literal) {
+        $var1 = uc $var1;
+        $var2 = uc $var2;
+        $b1 = $self->address_bits($var1);
+        $b2 = $self->address_bits($var2);
+        # both are variables
+        $code .= << "...";
+\t;; perform $var1 * $var2 without affecting either
+\tm_multiply_2 $var1, $var2
+...
+    } elsif ($var1 =~ $literal and $var2 !~ $literal) {
+        $var2 = uc $var2;
+        $var1 = sprintf "0x%02X", $var1;
+        $b2 = $self->address_bits($var2);
+        # var1 is literal and var2 is variable
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; perform $var1 * $var2 without affecting $var2
+\tm_multiply_1 $var2, $var1
+...
+    } elsif ($var1 !~ $literal and $var2 =~ $literal) {
+        $var1 = uc $var1;
+        $var2 = sprintf "0x%02X", $var2;
+        # var2 is literal and var1 is variable
+        $b1 = $self->address_bits($var1);
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; perform $var1 * $var2 without affecting $var1
+\tm_multiply_1 $var1, $var2
+...
+    } else {
+        # both are literals
+        # TODO: check for bits
+        my $var3 = $var1 * $var2;
+        $var3 = sprintf "0x%02X", $var3;
+        $code .= << "...";
+\t;; $var1 * $var2 = $var3
+\tmovlw $var3
+...
+    }
+    my $macros = {
+        m_multiply_var => $self->m_multiply_var,
+        m_multiply_macro => $self->m_multiply_macro,
+    };
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    return wantarray ? ($code, {}, $macros) : $code;
+}
+
+sub m_divide_var {
+    # TODO: do more than 8 bits
+    return << "...";
+;;;;;; VIC_VAR_DIVIDE VARIABLES ;;;;;;;
+
+VIC_VAR_DIVIDE_UDATA udata
+VIC_VAR_DIVISOR res 2
+VIC_VAR_REMAINDER res 2
+VIC_VAR_QUOTIENT res 2
+VIC_VAR_BITSHIFT res 2
+VIC_VAR_DIVTEMP res 1
+...
+}
+
+sub m_divide_macro {
+    return << "...";
+;;;;;; Taken from Microchip PIC examples.
+m_divide_internal macro
+    local _m_divide_shiftuploop, _m_divide_loop, _m_divide_shift
+    clrf VIC_VAR_QUOTIENT
+    clrf VIC_VAR_QUOTIENT + 1
+    clrf VIC_VAR_BITSHIFT + 1
+    movlw 0x01
+    movwf VIC_VAR_BITSHIFT
+_m_divide_shiftuploop:
+    bcf STATUS, C
+    rlf VIC_VAR_DIVISOR, F
+    rlf VIC_VAR_DIVISOR + 1, F
+    bcf STATUS, C
+    rlf VIC_VAR_BITSHIFT, F
+    rlf VIC_VAR_BITSHIFT + 1, F
+    btfss VIC_VAR_DIVISOR + 1, 7
+    goto _m_divide_shiftuploop
+_m_divide_loop:
+    movf VIC_VAR_DIVISOR, W
+    subwf VIC_VAR_REMAINDER, W
+    movwf VIC_VAR_DIVTEMP
+    movf VIC_VAR_DIVISOR + 1, W
+    btfss STATUS, C
+    addlw 0x01
+    subwf VIC_VAR_REMAINDER + 1, W
+    btfss STATUS, C
+    goto _m_divide_shift
+    movwf VIC_VAR_REMAINDER + 1
+    movf VIC_VAR_DIVTEMP, W
+    movwf VIC_VAR_REMAINDER
+    movf VIC_VAR_BITSHIFT + 1, W
+    addwf VIC_VAR_QUOTIENT + 1, F
+    movf VIC_VAR_BITSHIFT, W
+    addwf VIC_VAR_QUOTIENT, F
+_m_divide_shift:
+    bcf STATUS, C
+    rrf VIC_VAR_DIVISOR + 1, F
+    rrf VIC_VAR_DIVISOR, F
+    bcf STATUS, C
+    rrf VIC_VAR_BITSHIFT + 1, F
+    rrf VIC_VAR_BITSHIFT, F
+    btfss STATUS, C
+    goto _m_divide_loop
+    endm
+;;;;;; v1 and v2 are variables
+m_divide_2 macro v1, v2
+    movf v1, W
+    movwf VIC_VAR_REMAINDER
+    clrf VIC_VAR_REMAINDER + 1
+    movf v2, W
+    movwf VIC_VAR_DIVISOR
+    clrf VIC_VAR_DIVISOR + 1
+    m_divide_internal
+    movf VIC_VAR_QUOTIENT, W
+    endm
+;;;;;; v1 is literal and v2 is variable
+m_divide_1a macro v1, v2
+    movlw v1
+    movwf VIC_VAR_REMAINDER
+    clrf VIC_VAR_REMAINDER + 1
+    movf v2, W
+    movwf VIC_VAR_DIVISOR
+    clrf VIC_VAR_DIVISOR + 1
+    m_divide_internal
+    movf VIC_VAR_QUOTIENT, W
+    endm
+;;;;;;; v2 is literal and v1 is variable
+m_divide_1b macro v1, v2
+    movf v1, W
+    movwf VIC_VAR_REMAINDER
+    clrf VIC_VAR_REMAINDER + 1
+    movlw v2
+    movwf VIC_VAR_DIVISOR
+    clrf VIC_VAR_DIVISOR + 1
+    m_divide_internal
+    movf VIC_VAR_QUOTIENT, W
+    endm
+m_mod_2 macro v1, v2
+    m_divide_2 v1, v2
+    movf VIC_VAR_REMAINDER, W
+    endm
+;;;;;; v1 is literal and v2 is variable
+m_mod_1a macro v1, v2
+    m_divide_1a v1, v2
+    movf VIC_VAR_REMAINDER, W
+    endm
+;;;;;;; v2 is literal and v1 is variable
+m_mod_1b macro v1, v2
+    m_divide_1b v1, v2
+    movf VIC_VAR_REMAINDER, W
+    endm
+...
+}
+
+sub op_DIV {
+    my ($self, $var1, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    #TODO: temporary only 8-bit math
+    my ($b1, $b2);
+    if ($var1 !~ $literal and $var2 !~ $literal) {
+        $var1 = uc $var1;
+        $var2 = uc $var2;
+        $b1 = $self->address_bits($var1);
+        $b2 = $self->address_bits($var2);
+        # both are variables
+        $code .= << "...";
+\t;; perform $var1 / $var2 without affecting either
+\tm_divide_2 $var1, $var2
+...
+    } elsif ($var1 =~ $literal and $var2 !~ $literal) {
+        $var2 = uc $var2;
+        $var1 = sprintf "0x%02X", $var1;
+        $b2 = $self->address_bits($var2);
+        # var1 is literal and var2 is variable
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; perform $var1 / $var2 without affecting $var2
+\tm_divide_1a $var1, $var2
+...
+    } elsif ($var1 !~ $literal and $var2 =~ $literal) {
+        $var1 = uc $var1;
+        $var2 = sprintf "0x%02X", $var2;
+        # var2 is literal and var1 is variable
+        $b1 = $self->address_bits($var1);
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; perform $var1 / $var2 without affecting $var1
+\tm_divide_1b $var1, $var2
+...
+    } else {
+        # both are literals
+        # TODO: check for bits
+        my $var3 = int($var1 / $var2);
+        $var3 = sprintf "0x%02X", $var3;
+        $code .= << "...";
+\t;; $var1 / $var2 = $var3
+\tmovlw $var3
+...
+    }
+    my $macros = {
+        m_divide_var => $self->m_divide_var,
+        m_divide_macro => $self->m_divide_macro,
+    };
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    return wantarray ? ($code, {}, $macros) : $code;
+}
+
+sub op_MOD {
+    my ($self, $var1, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    #TODO: temporary only 8-bit math
+    my ($b1, $b2);
+    if ($var1 !~ $literal and $var2 !~ $literal) {
+        $var1 = uc $var1;
+        $var2 = uc $var2;
+        $b1 = $self->address_bits($var1);
+        $b2 = $self->address_bits($var2);
+        # both are variables
+        $code .= << "...";
+\t;; perform $var1 / $var2 without affecting either
+\tm_mod_2 $var1, $var2
+...
+    } elsif ($var1 =~ $literal and $var2 !~ $literal) {
+        $var2 = uc $var2;
+        $var1 = sprintf "0x%02X", $var1;
+        $b2 = $self->address_bits($var2);
+        # var1 is literal and var2 is variable
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; perform $var1 / $var2 without affecting $var2
+\tm_mod_1a $var1, $var2
+...
+    } elsif ($var1 !~ $literal and $var2 =~ $literal) {
+        $var1 = uc $var1;
+        $var2 = sprintf "0x%02X", $var2;
+        # var2 is literal and var1 is variable
+        $b1 = $self->address_bits($var1);
+        # TODO: check for bits for var1
+        $code .= << "...";
+\t;; perform $var1 / $var2 without affecting $var1
+\tm_mod_1b $var1, $var2
+...
+    } else {
+        # both are literals
+        # TODO: check for bits
+        my $var3 = int($var1 % $var2);
+        $var3 = sprintf "0x%02X", $var3;
+        $code .= << "...";
+\t;; $var1 / $var2 = $var3
+\tmovlw $var3
+...
+    }
+    my $macros = {
+        m_divide_var => $self->m_divide_var,
+        m_divide_macro => $self->m_divide_macro,
+    };
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    return wantarray ? ($code, {}, $macros) : $code;
+}
+
+sub op_BXOR {
+    my ($self, $var1, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    if ($var1 !~ $literal and $var2 !~ $literal) {
+        $var1 = uc $var1;
+        $var2 = uc $var2;
+        return << "...";
+\t;; perform $var1 ^ $var2 and move into W
+\tmovf $var1, W
+\txorwf $var2, W
+$code
+...
+    } elsif ($var1 !~ $literal and $var2 =~ $literal) {
+        $var1 = uc $var1;
+        $var2 = sprintf "0x%02X", $var2;
+        return << "...";
+\t;; perform $var1 ^ $var2 and move into W
+\tmovlw $var2
+\txorwf $var1, W
+$code
+...
+    } elsif ($var1 =~ $literal and $var2 !~ $literal) {
+        $var2 = uc $var2;
+        $var1 = sprintf "0x%02X", $var1;
+        return << "...";
+\t;; perform $var1 ^ $var2 and move into W
+\tmovlw $var1
+\txorwf $var2, W
+$code
+...
+    } else {
+        my $var3 = $var1 ^ $var2;
+        $var3 = sprintf "0x%02X", $var3;
+        return << "...";
+\t;; $var3 = $var1 ^ $var2. move into W
+\tmovlw $var3
+$code
+...
+    }
+}
+
+sub op_BAND {
+    my ($self, $var1, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    if ($var1 !~ $literal and $var2 !~ $literal) {
+        $var1 = uc $var1;
+        $var2 = uc $var2;
+        return << "...";
+\t;; perform $var1 & $var2 and move into W
+\tmovf $var1, W
+\tandwf $var2, W
+$code
+...
+    } elsif ($var1 !~ $literal and $var2 =~ $literal) {
+        $var1 = uc $var1;
+        $var2 = sprintf "0x%02X", $var2;
+        return << "...";
+\t;; perform $var1 & $var2 and move into W
+\tmovlw $var2
+\tandwf $var1, W
+$code
+...
+    } elsif ($var1 =~ $literal and $var2 !~ $literal) {
+        $var2 = uc $var2;
+        $var1 = sprintf "0x%02X", $var1;
+        return << "...";
+\t;; perform $var1 & $var2 and move into W
+\tmovlw $var1
+\tandwf $var2, W
+$code
+...
+    } else {
+        my $var3 = $var2 & $var1;
+        $var3 = sprintf "0x%02X", $var3;
+        return << "...";
+\t;; $var3 = $var1 & $var2. move into W
+\tmovlw $var3
+$code
+...
+    }
+}
+
+sub op_BOR {
+    my ($self, $var1, $var2, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    if ($var1 !~ $literal and $var2 !~ $literal) {
+        $var1 = uc $var1;
+        $var2 = uc $var2;
+        return << "...";
+\t;; perform $var1 | $var2 and move into W
+\tmovf $var1, W
+\tiorwf $var2, W
+$code
+...
+    } elsif ($var1 !~ $literal and $var2 =~ $literal) {
+        $var1 = uc $var1;
+        $var2 = sprintf "0x%02X", $var2;
+        return << "...";
+\t;; perform $var1 | $var2 and move into W
+\tmovlw $var2
+\tiorwf $var1, W
+$code
+...
+    } elsif ($var1 =~ $literal and $var2 !~ $literal) {
+        $var2 = uc $var2;
+        $var1 = sprintf "0x%02X", $var1;
+        return << "...";
+\t;; perform $var1 | $var2 and move into W
+\tmovlw $var1
+\tiorwf $var2, W
+$code
+...
+    } else {
+        my $var3 = $var1 | $var2;
+        $var3 = sprintf "0x%02X", $var3;
+        return << "...";
+\t;; $var3 = $var1 | $var2. move into W
+\tmovlw $var3
+$code
+...
+    }
+}
+
+sub get_predicate {
+    my ($self, $comment, %extra) = @_;
+    my $pred = '';
+    ## predicate can be either a result or a jump block
+    unless (defined $extra{RESULT}) {
+        my $flabel = $extra{SWAP} ? $extra{TRUE} : $extra{FALSE};
+        my $tlabel = $extra{SWAP} ? $extra{FALSE} : $extra{TRUE};
+        my $elabel = $extra{END};
+        $pred .= << "..."
+\tbtfss STATUS, Z ;; $comment ?
+\tgoto $flabel
+\tgoto $tlabel
+$elabel:
+...
+    } else {
+        my $flabel = $extra{SWAP} ? "$extra{END}_t_$extra{COUNTER}" :
+                        "$extra{END}_f_$extra{COUNTER}";
+        my $tlabel = $extra{SWAP} ? "$extra{END}_f_$extra{COUNTER}" :
+                        "$extra{END}_t_$extra{COUNTER}";
+        my $elabel = "$extra{END}_e_$extra{COUNTER}";
+        $pred .=  << "...";
+\tbtfss STATUS, Z ;; $comment ?
+\tgoto $flabel
+\tgoto $tlabel
+$flabel:
+\tclrw
+\tgoto $elabel
+$tlabel:
+\tmovlw 0x01
+$elabel:
+...
+        $pred .= $self->op_ASSIGN_w($extra{RESULT});
+    }
+    return $pred;
+}
+
+sub get_predicate_literals {
+    my ($self, $comment, $res, %extra) = @_;
+    if (defined $extra{RESULT}) {
+        my $tcode = 'movlw 0x01';
+        my $fcode = 'clrw';
+        my $code;
+        if ($res) {
+            $code = $extra{SWAP} ? $fcode : $tcode;
+        } else {
+            $code = $extra{SWAP} ? $tcode : $fcode;
+        }
+        my $ecode = $self->op_ASSIGN_w($extra{RESULT});
+        return "\t$code ;;$comment\n$ecode\n";
+    } else {
+        my $label;
+        if ($res) {
+            $label = $extra{SWAP} ? $extra{FALSE} : $extra{TRUE};
+        } else {
+            $label = $extra{SWAP} ? $extra{TRUE} : $extra{FALSE};
+        }
+        return "\tgoto $label ;; $comment\n$extra{END}:\n";
+    }
 }
 
 sub op_EQ {
     my ($self, $lhs, $rhs, %extra) = @_;
-    my $pred = '';
-    $pred .= "\tgoto $extra{FALSE}\n" if defined $extra{FALSE};
-    $pred .= "\tgoto $extra{TRUE}\n" if defined $extra{TRUE};
-    $pred .= "$extra{END}:\n" if defined $extra{END};
-    if ($lhs !~ /^\d+$/ and $rhs !~ /^\d+$/) {
+    my $comment = $extra{SWAP} ? "$lhs != $rhs" : "$lhs == $rhs";
+    my $pred = $self->get_predicate($comment, %extra);
+    my $literal = qr/^\d+$/;
+    if ($lhs !~ $literal and $rhs !~ $literal) {
         # lhs and rhs are variables
         $rhs = uc $rhs;
         $lhs = uc $lhs;
         return << "...";
-\tbcf STATUS, C
+\tbcf STATUS, Z
 \tmovf $rhs, W
 \txorwf $lhs, W
-\tbtfss STATUS, Z ;; they are equal
 $pred
 ...
-    } elsif ($rhs !~ /^\d+$/ and $lhs =~ /^\d+$/) {
+    } elsif ($rhs !~ $literal and $lhs =~ $literal) {
         # rhs is variable and lhs is a literal
         $rhs = uc $rhs;
+        $lhs = sprintf "0x%02X", $lhs;
         return << "...";
+\tbcf STATUS, Z
 \tmovf $rhs, W
 \txorlw $lhs
-\tbtfss STATUS, Z ;; $rhs == $lhs ?
 $pred
 ...
-    } elsif ($rhs =~ /^\d+$/ and $lhs !~ /^\d+$/) {
+    } elsif ($rhs =~ $literal and $lhs !~ $literal) {
         # rhs is a literal and lhs is a variable
         $lhs = uc $lhs;
+        $rhs = sprintf "0x%02X", $rhs;
         return << "...";
+\tbcf STATUS, Z
 \tmovf $lhs, W
 \txorlw $rhs
-\tbtfss STATUS, Z ;; $lhs == $rhs ?
 $pred
 ...
     } else {
         # both rhs and lhs are literals
-        if ($lhs == $rhs) {
-            return << "...";
-\tgoto $extra{TRUE}
-$extra{END}:
-...
-        } else {
-            return << "...";
-\tgoto $extra{FALSE}
-$extra{END}:
-...
-        }
+        my $res = $lhs == $rhs ? 1 : 0;
+        return $self->get_predicate_literals("$lhs == $rhs => $res", $res, %extra);
     }
+}
+
+sub op_LT {
+    my ($self, $lhs, $rhs, %extra) = @_;
+    my $pred = $self->get_predicate("$lhs < $rhs", %extra);
+    my $literal = qr/^\d+$/;
+    if ($lhs !~ $literal and $rhs !~ $literal) {
+        # lhs and rhs are variables
+        $rhs = uc $rhs;
+        $lhs = uc $lhs;
+        return << "...";
+\t;; perform check for $lhs < $rhs or $rhs > $lhs
+\tbcf STATUS, C
+\tmovf $rhs, W
+\tsubwf $lhs, W
+\tbtfsc STATUS, C ;; W($rhs) > F($lhs) => C = 0
+$pred
+...
+    } elsif ($rhs !~ $literal and $lhs =~ $literal) {
+        # rhs is variable and lhs is a literal
+        $rhs = uc $rhs;
+        $lhs = sprintf "0x%02X", $lhs;
+        return << "...";
+\t;; perform check for $lhs < $rhs or $rhs > $lhs
+\tbcf STATUS, C
+\tmovf $rhs, W
+\tsublw $lhs
+\tbtfsc STATUS, C ;; W($rhs) > k($lhs) => C = 0
+$pred
+...
+    } elsif ($rhs =~ $literal and $lhs !~ $literal) {
+        # rhs is a literal and lhs is a variable
+        $lhs = uc $lhs;
+        $rhs = sprintf "0x%02X", $rhs;
+        return << "...";
+\t;; perform check for $lhs < $rhs or $rhs > $lhs
+\tbcf STATUS, C
+\tmovlw $rhs
+\tsubwf $lhs, W
+\tbtfsc STATUS, C ;; W($rhs) > F($lhs) => C = 0
+$pred
+...
+    } else {
+        # both rhs and lhs are literals
+        my $res = $lhs < $rhs ? 1 : 0;
+        return $self->get_predicate_literals("$lhs < $rhs => $res", $res, %extra);
+    }
+}
+
+sub op_GE {
+    my ($self, $lhs, $rhs, %extra) = @_;
+    my $pred = $self->get_predicate("$lhs >= $rhs", %extra);
+    my $literal = qr/^\d+$/;
+    if ($lhs !~ $literal and $rhs !~ $literal) {
+        # lhs and rhs are variables
+        $rhs = uc $rhs;
+        $lhs = uc $lhs;
+        return << "...";
+\t;; perform check for $lhs >= $rhs or $rhs <= $lhs
+\tbcf STATUS, C
+\tmovf $rhs, W
+\tsubwf $lhs, W
+\tbtfss STATUS, C ;; W($rhs) <= F($lhs) => C = 1
+$pred
+...
+    } elsif ($rhs !~ $literal and $lhs =~ $literal) {
+        # rhs is variable and lhs is a literal
+        $rhs = uc $rhs;
+        $lhs = sprintf "0x%02X", $lhs;
+        return << "...";
+\t;; perform check for $lhs >= $rhs or $rhs <= $lhs
+\tbcf STATUS, C
+\tmovf $rhs, W
+\tsublw $lhs
+\tbtfss STATUS, C ;; W($rhs) <= k($lhs) => C = 1
+$pred
+...
+    } elsif ($rhs =~ $literal and $lhs !~ $literal) {
+        # rhs is a literal and lhs is a variable
+        $lhs = uc $lhs;
+        $rhs = sprintf "0x%02X", $rhs;
+        return << "...";
+\t;; perform check for $lhs >= $rhs or $rhs <= $lhs
+\tbcf STATUS, C
+\tmovlw $rhs
+\tsubwf $lhs, W
+\tbtfss STATUS, C ;; W($rhs) <= F($lhs) => C = 1
+$pred
+...
+    } else {
+        # both rhs and lhs are literals
+        my $res = $lhs >= $rhs ? 1 : 0;
+        return $self->get_predicate_literals("$lhs >= $rhs => $res", $res, %extra);
+    }
+}
+
+sub op_NE {
+    my ($self, $lhs, $rhs, %extra) = @_;
+    return $self->op_EQ($lhs, $rhs, %extra, SWAP => 1);
+}
+
+sub op_LE {
+    my ($self, $lhs, $rhs, %extra) = @_;
+    # we swap the lhs/rhs stuff instead of using SWAP
+    return $self->op_GE($rhs, $lhs, %extra);
+}
+
+sub op_GT {
+    my ($self, $lhs, $rhs, %extra) = @_;
+    # we swap the lhs/rhs stuff instead of using SWAP
+    return $self->op_LT($rhs, $lhs, %extra);
+}
+
+sub op_AND {
+    my ($self, $lhs, $rhs, %extra) = @_;
+    my $pred = $self->get_predicate("$lhs && $rhs", %extra);
+    my $literal = qr/^\d+$/;
+    if ($lhs !~ $literal and $rhs !~ $literal) {
+        # lhs and rhs are variables
+        $rhs = uc $rhs;
+        $lhs = uc $lhs;
+        return << "...";
+\t;; perform check for $lhs && $rhs
+\tbcf STATUS, Z
+\tmovf $lhs, W
+\tbtfss STATUS, Z  ;; $lhs is false if it is set else true
+\tmovf $rhs, W
+\tbtfss STATUS, Z ;; $rhs is false if it is set else true
+$pred
+...
+    } elsif ($rhs !~ $literal and $lhs =~ $literal) {
+        # rhs is variable and lhs is a literal
+        $rhs = uc $rhs;
+        $lhs = sprintf "0x%02X", $lhs;
+        return << "...";
+\t;; perform check for $lhs && $rhs
+\tbcf STATUS, Z
+\tmovlw $lhs
+\txorlw 0x00        ;; $lhs ^ 0 will set the Z bit
+\tbtfss STATUS, Z  ;; $lhs is false if it is set else true
+\tmovf $rhs, W
+\tbtfss STATUS, Z ;; $rhs is false if it is set else true
+$pred
+...
+    } elsif ($rhs =~ $literal and $lhs !~ $literal) {
+        # rhs is a literal and lhs is a variable
+        $lhs = uc $lhs;
+        $rhs = sprintf "0x%02X", $rhs;
+        return << "...";
+\t;; perform check for $lhs && $rhs
+\tbcf STATUS, Z
+\tmovlw $rhs
+\txorlw 0x00        ;; $rhs ^ 0 will set the Z bit
+\tbtfss STATUS, Z  ;; $rhs is false if it is set else true
+\tmovf $lhs, W
+\tbtfss STATUS, Z ;; $lhs is false if it is set else true
+$pred
+...
+    } else {
+        # both rhs and lhs are literals
+        my $res = ($lhs && $rhs) ? 1 : 0;
+        return $self->get_predicate_literals("$lhs && $rhs => $res", $res, %extra);
+    }
+}
+
+sub op_OR {
+    my ($self, $lhs, $rhs, %extra) = @_;
+    my $pred = $self->get_predicate("$lhs || $rhs", %extra);
+    my $literal = qr/^\d+$/;
+    if ($lhs !~ $literal and $rhs !~ $literal) {
+        # lhs and rhs are variables
+        $rhs = uc $rhs;
+        $lhs = uc $lhs;
+        return << "...";
+\t;; perform check for $lhs || $rhs
+\tbcf STATUS, Z
+\tmovf $lhs, W
+\tbtfsc STATUS, Z  ;; $lhs is false if it is set else true
+\tmovf $rhs, W
+\tbtfsc STATUS, Z ;; $rhs is false if it is set else true
+$pred
+...
+    } elsif ($rhs !~ $literal and $lhs =~ $literal) {
+        # rhs is variable and lhs is a literal
+        $rhs = uc $rhs;
+        $lhs = sprintf "0x%02X", $lhs;
+        return << "...";
+\t;; perform check for $lhs || $rhs
+\tbcf STATUS, Z
+\tmovlw $lhs
+\txorlw 0x00        ;; $lhs ^ 0 will set the Z bit
+\tbtfsc STATUS, Z  ;; $lhs is false if it is set else true
+\tmovf $rhs, W
+\tbtfsc STATUS, Z ;; $rhs is false if it is set else true
+$pred
+...
+    } elsif ($rhs =~ $literal and $lhs !~ $literal) {
+        # rhs is a literal and lhs is a variable
+        $lhs = uc $lhs;
+        $rhs = sprintf "0x%02X", $rhs;
+        return << "...";
+\t;; perform check for $lhs || $rhs
+\tbcf STATUS, Z
+\tmovlw $rhs
+\txorlw 0x00        ;; $rhs ^ 0 will set the Z bit
+\tbtfsc STATUS, Z  ;; $rhs is false if it is set else true
+\tmovf $lhs, W
+\tbtfsc STATUS, Z ;; $lhs is false if it is set else true
+$pred
+...
+    } else {
+        # both rhs and lhs are literals
+        my $res = ($lhs || $rhs) ? 1 : 0;
+        return $self->get_predicate_literals("$lhs || $rhs => $res", $res, %extra);
+    }
+}
+
+sub m_sqrt_var {
+    return << '...';
+;;;;;; VIC_VAR_SQRT VARIABLES ;;;;;;
+VIC_VAR_SQRT_UDATA udata
+VIC_VAR_SQRT_VAL res 2
+VIC_VAR_SQRT_RES res 2
+VIC_VAR_SQRT_SUM res 2
+VIC_VAR_SQRT_ODD res 2
+VIC_VAR_SQRT_TMP res 2
+...
+}
+
+sub m_sqrt_macro {
+    return << '...';
+;;;;;; Taken from Microchip PIC examples.
+;;;;;; reverse of Finite Difference Squaring
+m_sqrt_internal macro
+    local _m_sqrt_loop, _m_sqrt_loop_break
+    movlw 0x01
+    movwf VIC_VAR_SQRT_ODD
+    clrf VIC_VAR_SQRT_ODD + 1
+    clrf VIC_VAR_SQRT_RES
+    clrf VIC_VAR_SQRT_RES + 1
+    clrf VIC_VAR_SQRT_SUM
+    clrf VIC_VAR_SQRT_SUM + 1
+    clrf VIC_VAR_SQRT_TMP
+    clrf VIC_VAR_SQRT_TMP + 1
+_m_sqrt_loop:
+    movf VIC_VAR_SQRT_SUM + 1, W
+    addwf VIC_VAR_SQRT_ODD + 1, W
+    movwf VIC_VAR_SQRT_TMP + 1
+    movf VIC_VAR_SQRT_SUM, W
+    addwf VIC_VAR_SQRT_ODD, W
+    movwf VIC_VAR_SQRT_TMP
+    btfsc STATUS, C
+    incf VIC_VAR_SQRT_TMP + 1, F
+    movf VIC_VAR_SQRT_TMP, W
+    subwf VIC_VAR_SQRT_VAL, W
+    movf VIC_VAR_SQRT_TMP + 1, W
+    btfss STATUS, C
+    addlw 0x01
+    subwf VIC_VAR_SQRT_VAL + 1, W
+    btfss STATUS, C
+    goto _m_sqrt_loop_break
+    movf VIC_VAR_SQRT_TMP + 1, W
+    movwf VIC_VAR_SQRT_SUM + 1
+    movf VIC_VAR_SQRT_TMP, W
+    movwf VIC_VAR_SQRT_SUM
+    movlw 0x02
+    addwf VIC_VAR_SQRT_ODD, F
+    btfsc STATUS, C
+    incf VIC_VAR_SQRT_ODD + 1, F
+    incf VIC_VAR_SQRT_RES, F
+    btfsc STATUS, Z
+    incf VIC_VAR_SQRT_RES + 1, F
+    goto _m_sqrt_loop
+_m_sqrt_loop_break:
+    endm
+m_sqrt_8bit macro v1
+    movf v1, W
+    movwf VIC_VAR_SQRT_VAL
+    clrf VIC_VAR_SQRT_VAL + 1
+    m_sqrt_internal
+    movf VIC_VAR_SQRT_RES, W
+    endm
+m_sqrt_16bit macro v1
+    movf high v1, W
+    movwf VIC_VAR_SQRT_VAL + 1
+    movf low v1, W
+    movwf VIC_VAR_SQRT_VAL
+    m_sqrt_internal
+    movf VIC_VAR_SQRT_RES, W
+    endm
+...
+}
+
+sub op_SQRT {
+    my ($self, $var1, $dummy, %extra) = @_;
+    my $literal = qr/^\d+$/;
+    my $code = '';
+    #TODO: temporary only 8-bit math
+    if ($var1 !~ $literal) {
+        $var1 = uc $var1;
+        my $b1 = $self->address_bits($var1) || 8;
+        # both are variables
+        $code .= << "...";
+\t;; perform sqrt($var1)
+\tm_sqrt_${b1}bit $var1
+...
+    } elsif ($var1 =~ $literal) {
+        my $svar = sqrt $var1;
+        my $var2 = sprintf "0x%02X", int($svar);
+        $code .= << "...";
+\t;; sqrt($var1) = $svar -> $var2;
+\tmovlw $var2
+...
+    } else {
+        carp "Warning: $var1 cannot have a square root";
+        return;
+    }
+    my $macros = {
+        m_sqrt_var => $self->m_sqrt_var,
+        m_sqrt_macro => $self->m_sqrt_macro,
+    };
+    $code .= $self->op_ASSIGN_w($extra{RESULT}) if $extra{RESULT};
+    return wantarray ? ($code, {}, $macros) : $code;
 }
 
 sub m_debounce_var {
     return <<'...';
-;;;;;; DEBOUNCE VARIABLES ;;;;;;;
+;;;;;; VIC_VAR_DEBOUNCE VARIABLES ;;;;;;;
 
-DEBOUNCE_VAR_IDATA idata
+VIC_VAR_DEBOUNCE_VAR_IDATA idata
 ;; initialize state to 1
-DEBOUNCESTATE db 0x01
+VIC_VAR_DEBOUNCESTATE db 0x01
 ;; initialize counter to 0
-DEBOUNCECOUNTER db 0x00
+VIC_VAR_DEBOUNCECOUNTER db 0x00
 
 ...
 }
+
 sub debounce {
     my ($self, $inp, %action) = @_;
     my $action_label = $action{ACTION};
@@ -1217,39 +2305,40 @@ sub debounce {
     $funcs = {} unless defined $funcs;
     $deb_code = 'nop' unless defined $deb_code;
     $macros->{m_debounce_var} = $self->m_debounce_var;
+    $debounce_count = sprintf "0x%02X", $debounce_count;
     my $code = <<"...";
 \t;;; generate code for debounce $port<$portbit>
 $deb_code
 \t;; has debounce state changed to down (bit 0 is 0)
 \t;; if yes go to debounce-state-down
-\tbtfsc   DEBOUNCESTATE, 0
+\tbtfsc   VIC_VAR_DEBOUNCESTATE, 0
 \tgoto    _debounce_state_up
 _debounce_state_down:
 \tclrw
 \tbtfss   PORT$port, $portbit
 \t;; increment and move into counter
-\tincf    DEBOUNCECOUNTER, 0
-\tmovwf   DEBOUNCECOUNTER
+\tincf    VIC_VAR_DEBOUNCECOUNTER, 0
+\tmovwf   VIC_VAR_DEBOUNCECOUNTER
 \tgoto    _debounce_state_check
 
 _debounce_state_up:
 \tclrw
 \tbtfsc   PORT$port, $portbit
-\tincf    DEBOUNCECOUNTER, 0
-\tmovwf   DEBOUNCECOUNTER
+\tincf    VIC_VAR_DEBOUNCECOUNTER, 0
+\tmovwf   VIC_VAR_DEBOUNCECOUNTER
 \tgoto    _debounce_state_check
 
 _debounce_state_check:
-\tmovf    DEBOUNCECOUNTER, W
+\tmovf    VIC_VAR_DEBOUNCECOUNTER, W
 \txorlw   $debounce_count
 \t;; is counter == $debounce_count ?
 \tbtfss   STATUS, Z
 \tgoto    $end_label
 \t;; after $debounce_count straight, flip direction
-\tcomf    DEBOUNCESTATE, 1
-\tclrf    DEBOUNCECOUNTER
+\tcomf    VIC_VAR_DEBOUNCESTATE, 1
+\tclrf    VIC_VAR_DEBOUNCECOUNTER
 \t;; was it a key-down
-\tbtfss   DEBOUNCESTATE, 0
+\tbtfss   VIC_VAR_DEBOUNCESTATE, 0
 \tgoto    $end_label
 \tgoto    $action_label
 $end_label:\n

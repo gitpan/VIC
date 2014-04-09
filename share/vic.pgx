@@ -1,17 +1,17 @@
 %grammar vic
-%version 0.0.7
+%version 0.0.8
 #COPYRIGHT: 2014 Vikas N Kumar <vikas@cpan.org>. All Rights Reserved
 
 # uc-select is necessary.
 program: uc-select header* statement* EOS
 
-header: uc-config | comment
+header: pragmas | comment
 uc-select: /PIC <BLANK>+ (<uc-types>) <line-ending>/
 
 # P16F690X is fake just to show how to enumerate.
 uc-types: /(?i:P16F690 | P16F690X)/
-uc-config: /config/ + (name | variable) config-expression line-ending
-config-expression: name /<EQUAL> -/ (number-units | number) -
+pragmas: /pragma/ + (variable | name) (pragma-expression | name)? line-ending
+pragma-expression: name /<EQUAL> -/ (number-units | number | string) -
 
 comment: /- <HASH> <ANY>* <EOL>/ | blank-line
 blank-line: /- <EOL>/
@@ -21,7 +21,7 @@ _: /<BLANK>*/
 __: /<BLANK>+/
 line-ending: /- <SEMI> - <EOL>?/
 
-statement: comment | instruction | expression | block
+statement: comment | instruction | expression | conditional-statement | block
 
 block: named-block | conditional-block
 named-block: name anonymous-block
@@ -32,11 +32,11 @@ end-block: /- <RCURLY> - <EOL>?/
 
 instruction: name values line-ending
 
-name: - identifier -
+name: - identifier-without-keyword -
 values: (value % COMMA)*
 value: - (string | number-units | number | variable | named-block | validated-variable | modifier-variable) -
 
-expression: (assign-expr | unary-expr | conditional-statement) line-ending
+expression: (assign-expr | unary-expr) line-ending
 unary-lhs: - unary-operator - variable -
 unary-rhs: - variable - unary-operator -
 unary-expr: unary-lhs | unary-rhs
@@ -47,19 +47,25 @@ rhs-expr: (expr-value % rhs-operator)+
 assign-expr: - variable - assign-operator - rhs-expr
 
 comparison: expr-value compare-operator expr-value
-single-conditional: comparison | complement | boolean
-conditional-predicate: - (anonymous-block) - COMMA? - (anonymous-block | conditional-statement)* -
-conditional-subject: (single-conditional % logic-operator)+
-conditional-statement: - / if / - conditional-subject - COMMA - conditional-predicate
+single-conditional: comparison | expr-value
+nested-conditional: start-nested-expr single-conditional end-nested-expr
+any-conditional: single-conditional | nested-conditional
+conditional-predicate: - (anonymous-block) - (/ else / - (anonymous-block | conditional-statement)*)? -
+single-conditional-subject: (any-conditional % logic-operator)+
+nested-conditional-subject: start-nested-expr single-conditional-subject end-nested-expr
+conditional-subject: single-conditional-subject | nested-conditional-subject
+conditional-statement: - / if / - conditional-subject - conditional-predicate line-ending?
 
 complement-operator: /(<TILDE> | <BANG>)/
 unary-operator: /(<PLUS> <PLUS> | <DASH> <DASH>)/
-assign-operator: /([<PLUS> <DASH> <PERCENT> <CARET> <STAR> <PIPE> <AMP> <SLASH>]? <EQUAL>)/
+assign-operator: /([<PLUS> <DASH> <PERCENT> <CARET> <STAR> <PIPE> <AMP> <SLASH>]? <EQUAL>)/ | shift-assign-operator
 compare-operator: /([<BANG> <EQUAL> <LANGLE> <RANGLE>] <EQUAL> | (: <LANGLE> | <RANGLE> ))/
 logic-operator: /([<AMP> <PIPE>]{2})/
 math-operator: /([<PLUS> <DASH> <STAR> <SLASH> <PERCENT>])/
+shift-operator: /(<LANGLE><LANGLE> | <RANGLE><RANGLE>)/
+shift-assign-operator: /(<LANGLE><LANGLE><EQUAL> | <RANGLE><RANGLE><EQUAL>)/
 bit-operator: /([<PIPE> <CARET> <AMP>])/
-rhs-operator: math-operator | bit-operator
+rhs-operator: math-operator | bit-operator | shift-operator
 # parentheses
 start-nested-expr: /- <LPAREN> -/
 end-nested-expr: /- <RPAREN> -/
@@ -69,14 +75,16 @@ string: single-quoted-string | double-quoted-string
 # most microcontrollers cannot do floating point math so ignore real numbers
 number-units: number - units
 # number handles both hex and non-hex values for ease of use
-number: /(0[xX]<HEX>+ | <DIGIT>+)/ | boolean
+number: /(0[xX]<HEX>+ | -?<DIGIT>+)/ | boolean
 units: /(s | ms | us | kHz | Hz | MHz)/
 boolean: /( TRUE | FALSE | true | false | 0 | 1)/
 
-validated-variable: identifier
-modifier-variable: identifier -  variable
+validated-variable: identifier-without-keyword
+modifier-variable: identifier-without-keyword -  variable
 variable: DOLLAR identifier
+identifier-without-keyword: /(!<keyword>)(<ALPHA>[<WORDS>]*)/
 identifier: /(<ALPHA>[<WORDS>]*)/
+keyword: /if | else | while | true | false | TRUE | FALSE/
 
 single_quoted_string:
     /(:

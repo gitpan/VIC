@@ -1,8 +1,8 @@
 PIC P16F690;
 
-config debounce count = 2;
-config debounce delay = 1ms;
-config adc right_justify = 0;
+pragma debounce count = 2;
+pragma debounce delay = 1ms;
+pragma adc right_justify = 0;
 
 Main {
     digital_output PORTC;
@@ -11,7 +11,7 @@ Main {
     # adc_enable clock, channel
     adc_enable 500kHz, AN0;
     $display = 0x08; # create a 8-bit register
-    $dirxn = 0;
+    $dirxn = FALSE;
     Loop {
         write PORTC, $display;
         adc_read $userval;
@@ -20,9 +20,9 @@ Main {
         debounce RA3, Action {
             $dirxn = !$dirxn;
         };
-        if $dirxn == 1, {
+        if $dirxn == TRUE {
             rol $display, 1;
-        }, {
+        } else {
             ror $display, 1;
         };
     }

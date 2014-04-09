@@ -11,7 +11,7 @@ configure_requires:
   Module::Build: 0
   Software::License: 0
 dynamic_config: 1
-generated_by: 'Module::Build version 0.4203, CPAN::Meta::Converter version 2.132830'
+generated_by: 'Module::Build version 0.4205, CPAN::Meta::Converter version 2.132661'
 keywords:
   - VIC
   - PIC
@@ -27,25 +27,25 @@ no_index:
 provides:
   VIC:
     file: lib/VIC.pm
-    version: 0.04
+    version: 0.05
   VIC::Command:
     file: lib/VIC/Command.pm
-    version: 0.04
+    version: 0.05
   VIC::Grammar:
     file: lib/VIC/Grammar.pm
-    version: 0.04
-  VIC::PIC:
-    file: lib/VIC/PIC.pm
-    version: 0.04
+    version: 0.05
   VIC::PIC::Any:
     file: lib/VIC/PIC/Any.pm
-    version: 0.04
+    version: 0.05
   VIC::PIC::P16F690:
     file: lib/VIC/PIC/P16F690.pm
-    version: 0.04
+    version: 0.05
   VIC::Parser:
     file: lib/VIC/Parser.pm
-    version: 0.04
+    version: 0.05
+  VIC::Receiver:
+    file: lib/VIC/Receiver.pm
+    version: 0.05
 recommends:
   App::Prove: 0
   XXX: 0
@@ -53,9 +53,11 @@ requires:
   File::ShareDir: 1.00
   File::Spec: 0
   Getopt::Long: 0
+  List::MoreUtils: 0
+  List::Util: 0
   Pegex: 0.22
 resources:
   bugtracker: https://github.com/vikasnkumar/vic/issues
   license: http://dev.perl.org/licenses/
   repository: https://github.com/vikasnkumar/vic
-version: 0.04
+version: 0.05

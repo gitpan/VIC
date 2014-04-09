@@ -4,12 +4,12 @@ use warnings;
 
 use VIC::Parser;
 use VIC::Grammar;
-use VIC::PIC;
+use VIC::Receiver;
 
 our $Debug = 0;
 our $Intermediate = 0;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 $VERSION = eval $VERSION;
 
 sub compile {
@@ -17,7 +17,7 @@ sub compile {
 
     my $parser = VIC::Parser->new(
         grammar => VIC::Grammar->new,
-        receiver => VIC::PIC->new(
+        receiver => VIC::Receiver->new(
                     pic_override => $pic,
                     intermediate_inline => $Intermediate,
                 ),

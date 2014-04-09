@@ -2,7 +2,7 @@ package VIC::Grammar;
 use strict;
 use warnings;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -14,7 +14,7 @@ sub make_tree {
   {
     '+grammar' => 'vic',
     '+toprule' => 'program',
-    '+version' => '0.0.7',
+    '+version' => '0.0.8',
     'COMMA' => {
       '.rgx' => qr/\G,/
     },
@@ -44,6 +44,16 @@ sub make_tree {
         }
       ]
     },
+    'any_conditional' => {
+      '.any' => [
+        {
+          '.ref' => 'single_conditional'
+        },
+        {
+          '.ref' => 'nested_conditional'
+        }
+      ]
+    },
     'assign_expr' => {
       '.all' => [
         {
@@ -67,7 +77,14 @@ sub make_tree {
       ]
     },
     'assign_operator' => {
-      '.rgx' => qr/\G([\+\-%\^\*\|&\/]?=)/
+      '.any' => [
+        {
+          '.rgx' => qr/\G([\+\-%\^\*\|&\/]?=)/
+        },
+        {
+          '.ref' => 'shift_assign_operator'
+        }
+      ]
     },
     'bit_operator' => {
       '.rgx' => qr/\G([\|\^&])/
@@ -168,19 +185,23 @@ sub make_tree {
         },
         {
           '+max' => 1,
-          '.ref' => 'COMMA'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '+min' => 0,
-          '.any' => [
+          '.all' => [
             {
-              '.ref' => 'anonymous_block'
+              '.rgx' => qr/\Gelse/
             },
             {
-              '.ref' => 'conditional_statement'
+              '.ref' => '_'
+            },
+            {
+              '+min' => 0,
+              '.any' => [
+                {
+                  '.ref' => 'anonymous_block'
+                },
+                {
+                  '.ref' => 'conditional_statement'
+                }
+              ]
             }
           ]
         },
@@ -207,43 +228,21 @@ sub make_tree {
           '.ref' => '_'
         },
         {
-          '.ref' => 'COMMA'
-        },
-        {
-          '.ref' => '_'
-        },
-        {
           '.ref' => 'conditional_predicate'
+        },
+        {
+          '+max' => 1,
+          '.ref' => 'line_ending'
         }
       ]
     },
     'conditional_subject' => {
-      '+min' => 1,
-      '.ref' => 'single_conditional',
-      '.sep' => {
-        '.ref' => 'logic_operator'
-      }
-    },
-    'config_expression' => {
-      '.all' => [
+      '.any' => [
         {
-          '.ref' => 'name'
+          '.ref' => 'single_conditional_subject'
         },
         {
-          '.rgx' => qr/\G=[\ \t]*/
-        },
-        {
-          '.any' => [
-            {
-              '.ref' => 'number_units'
-            },
-            {
-              '.ref' => 'number'
-            }
-          ]
-        },
-        {
-          '.ref' => '_'
+          '.ref' => 'nested_conditional_subject'
         }
       ]
     },
@@ -297,9 +296,6 @@ sub make_tree {
             },
             {
               '.ref' => 'unary_expr'
-            },
-            {
-              '.ref' => 'conditional_statement'
             }
           ]
         },
@@ -311,7 +307,7 @@ sub make_tree {
     'header' => {
       '.any' => [
         {
-          '.ref' => 'uc_config'
+          '.ref' => 'pragmas'
         },
         {
           '.ref' => 'comment'
@@ -320,6 +316,9 @@ sub make_tree {
     },
     'identifier' => {
       '.rgx' => qr/\G([a-zA-Z][0-9A-Za-z_]*)/
+    },
+    'identifier_without_keyword' => {
+      '.rgx' => qr/\G(?!if|else|while|true|false|TRUE|FALSE)([a-zA-Z][0-9A-Za-z_]*)/
     },
     'instruction' => {
       '.all' => [
@@ -346,7 +345,7 @@ sub make_tree {
     'modifier_variable' => {
       '.all' => [
         {
-          '.ref' => 'identifier'
+          '.ref' => 'identifier_without_keyword'
         },
         {
           '.ref' => '_'
@@ -362,7 +361,7 @@ sub make_tree {
           '.ref' => '_'
         },
         {
-          '.ref' => 'identifier'
+          '.ref' => 'identifier_without_keyword'
         },
         {
           '.ref' => '_'
@@ -376,6 +375,32 @@ sub make_tree {
         },
         {
           '.ref' => 'anonymous_block'
+        }
+      ]
+    },
+    'nested_conditional' => {
+      '.all' => [
+        {
+          '.ref' => 'start_nested_expr'
+        },
+        {
+          '.ref' => 'single_conditional'
+        },
+        {
+          '.ref' => 'end_nested_expr'
+        }
+      ]
+    },
+    'nested_conditional_subject' => {
+      '.all' => [
+        {
+          '.ref' => 'start_nested_expr'
+        },
+        {
+          '.ref' => 'single_conditional_subject'
+        },
+        {
+          '.ref' => 'end_nested_expr'
         }
       ]
     },
@@ -395,7 +420,7 @@ sub make_tree {
     'number' => {
       '.any' => [
         {
-          '.rgx' => qr/\G(0[xX][0-9a-fA-F]+|[0-9]+)/
+          '.rgx' => qr/\G(0[xX][0-9a-fA-F]+|-?[0-9]+)/
         },
         {
           '.ref' => 'boolean'
@@ -412,6 +437,66 @@ sub make_tree {
         },
         {
           '.ref' => 'units'
+        }
+      ]
+    },
+    'pragma_expression' => {
+      '.all' => [
+        {
+          '.ref' => 'name'
+        },
+        {
+          '.rgx' => qr/\G=[\ \t]*/
+        },
+        {
+          '.any' => [
+            {
+              '.ref' => 'number_units'
+            },
+            {
+              '.ref' => 'number'
+            },
+            {
+              '.ref' => 'string'
+            }
+          ]
+        },
+        {
+          '.ref' => '_'
+        }
+      ]
+    },
+    'pragmas' => {
+      '.all' => [
+        {
+          '.rgx' => qr/\Gpragma/
+        },
+        {
+          '.ref' => '__'
+        },
+        {
+          '.any' => [
+            {
+              '.ref' => 'variable'
+            },
+            {
+              '.ref' => 'name'
+            }
+          ]
+        },
+        {
+          '+max' => 1,
+          '.any' => [
+            {
+              '.ref' => 'pragma_expression'
+            },
+            {
+              '.ref' => 'name'
+            }
+          ]
+        },
+        {
+          '.ref' => 'line_ending'
         }
       ]
     },
@@ -447,8 +532,17 @@ sub make_tree {
         },
         {
           '.ref' => 'bit_operator'
+        },
+        {
+          '.ref' => 'shift_operator'
         }
       ]
+    },
+    'shift_assign_operator' => {
+      '.rgx' => qr/\G(<<=|>>=)/
+    },
+    'shift_operator' => {
+      '.rgx' => qr/\G(<<|>>)/
     },
     'single_conditional' => {
       '.any' => [
@@ -456,12 +550,16 @@ sub make_tree {
           '.ref' => 'comparison'
         },
         {
-          '.ref' => 'complement'
-        },
-        {
-          '.ref' => 'boolean'
+          '.ref' => 'expr_value'
         }
       ]
+    },
+    'single_conditional_subject' => {
+      '+min' => 1,
+      '.ref' => 'any_conditional',
+      '.sep' => {
+        '.ref' => 'logic_operator'
+      }
     },
     'single_quoted_string' => {
       '.rgx' => qr/\G(?:'((?:[^\n\\']|\\'|\\\\)*?)')/
@@ -484,6 +582,9 @@ sub make_tree {
           '.ref' => 'expression'
         },
         {
+          '.ref' => 'conditional_statement'
+        },
+        {
           '.ref' => 'block'
         }
       ]
@@ -495,32 +596,6 @@ sub make_tree {
         },
         {
           '.ref' => 'double_quoted_string'
-        }
-      ]
-    },
-    'uc_config' => {
-      '.all' => [
-        {
-          '.rgx' => qr/\Gconfig/
-        },
-        {
-          '.ref' => '__'
-        },
-        {
-          '.any' => [
-            {
-              '.ref' => 'name'
-            },
-            {
-              '.ref' => 'variable'
-            }
-          ]
-        },
-        {
-          '.ref' => 'config_expression'
-        },
-        {
-          '.ref' => 'line_ending'
         }
       ]
     },
@@ -582,7 +657,7 @@ sub make_tree {
       '.rgx' => qr/\G(s|ms|us|kHz|Hz|MHz)/
     },
     'validated_variable' => {
-      '.ref' => 'identifier'
+      '.ref' => 'identifier_without_keyword'
     },
     'value' => {
       '.all' => [

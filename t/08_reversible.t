@@ -4,9 +4,9 @@ use t::TestVIC tests => 1, debug => 0;
 my $input = <<'...';
 PIC P16F690;
 
-config debounce count = 2;
-config debounce delay = 1ms;
-config adc right_justify = 0;
+pragma debounce count = 2;
+pragma debounce delay = 1ms;
+pragma adc right_justify = 0;
 
 Main {
     digital_output PORTC;
@@ -15,7 +15,7 @@ Main {
     # adc_enable clock, channel
     adc_enable 500kHz, AN0;
     $display = 0x08; # create a 8-bit register
-    $dirxn = 0;
+    $dirxn = FALSE;
     Loop {
         write PORTC, $display;
         adc_read $userval;
@@ -24,9 +24,9 @@ Main {
         debounce RA3, Action {
             $dirxn = !$dirxn;
         };
-        if $dirxn == 1, {
+        if $dirxn == TRUE {
             rol $display, 1;
-        }, {
+        } else {
             ror $display, 1;
         };
     }
@@ -42,20 +42,20 @@ DIRXN res 1
 DISPLAY res 1
 USERVAL res 1
 
-;;;;;; DEBOUNCE VARIABLES ;;;;;;;
+;;;;;; VIC_VAR_DEBOUNCE VARIABLES ;;;;;;;
 
-DEBOUNCE_VAR_IDATA idata
+VIC_VAR_DEBOUNCE_VAR_IDATA idata
 ;; initialize state to 1
-DEBOUNCESTATE db 0x01
+VIC_VAR_DEBOUNCESTATE db 0x01
 ;; initialize counter to 0
-DEBOUNCECOUNTER db 0x00
+VIC_VAR_DEBOUNCECOUNTER db 0x00
 
 
 
 ;;;;;; DELAY FUNCTIONS ;;;;;;;
 
-DELAY_VAR_UDATA udata
-DELAY_VAR   res 3
+VIC_VAR_DELAY_UDATA udata
+VIC_VAR_DELAY   res 3
 
 
 
@@ -71,25 +71,25 @@ m_delay_ms macro msecs
     variable msecs_1 = 0
 msecs_1 = (msecs * D'13') / D'10'
     movlw   msecs_1
-    movwf   DELAY_VAR + 1
+    movwf   VIC_VAR_DELAY + 1
 _delay_msecs_loop_1:
-    clrf   DELAY_VAR   ;; set to 0 which gets decremented to 0xFF
+    clrf   VIC_VAR_DELAY   ;; set to 0 which gets decremented to 0xFF
 _delay_msecs_loop_0:
-    decfsz  DELAY_VAR, F
+    decfsz  VIC_VAR_DELAY, F
     goto    _delay_msecs_loop_0
-    decfsz  DELAY_VAR + 1, F
+    decfsz  VIC_VAR_DELAY + 1, F
     goto    _delay_msecs_loop_1
     endm
 
 m_delay_wms macro
     local _delayw_msecs_loop_0, _delayw_msecs_loop_1
-    movwf   DELAY_VAR + 1
+    movwf   VIC_VAR_DELAY + 1
 _delayw_msecs_loop_1:
-    clrf   DELAY_VAR   ;; set to 0 which gets decremented to 0xFF
+    clrf   VIC_VAR_DELAY   ;; set to 0 which gets decremented to 0xFF
 _delayw_msecs_loop_0:
-    decfsz  DELAY_VAR, F
+    decfsz  VIC_VAR_DELAY, F
     goto    _delayw_msecs_loop_0
-    decfsz  DELAY_VAR + 1, F
+    decfsz  VIC_VAR_DELAY + 1, F
     goto    _delayw_msecs_loop_1
     endm
 
@@ -171,41 +171,41 @@ _loop_1:
 
 	;; has debounce state changed to down (bit 0 is 0)
 	;; if yes go to debounce-state-down
-	btfsc   DEBOUNCESTATE, 0
+	btfsc   VIC_VAR_DEBOUNCESTATE, 0
 	goto    _debounce_state_up
 _debounce_state_down:
 	clrw
 	btfss   PORTA, 3
 	;; increment and move into counter
-	incf    DEBOUNCECOUNTER, 0
-	movwf   DEBOUNCECOUNTER
+	incf    VIC_VAR_DEBOUNCECOUNTER, 0
+	movwf   VIC_VAR_DEBOUNCECOUNTER
 	goto    _debounce_state_check
 
 _debounce_state_up:
 	clrw
 	btfsc   PORTA, 3
-	incf    DEBOUNCECOUNTER, 0
-	movwf   DEBOUNCECOUNTER
+	incf    VIC_VAR_DEBOUNCECOUNTER, 0
+	movwf   VIC_VAR_DEBOUNCECOUNTER
 	goto    _debounce_state_check
 
 _debounce_state_check:
-	movf    DEBOUNCECOUNTER, W
-	xorlw   2
+	movf    VIC_VAR_DEBOUNCECOUNTER, W
+	xorlw   0x02
 	;; is counter == 2 ?
 	btfss   STATUS, Z
 	goto    _end_action_2
 	;; after 2 straight, flip direction
-	comf    DEBOUNCESTATE, 1
-	clrf    DEBOUNCECOUNTER
+	comf    VIC_VAR_DEBOUNCESTATE, 1
+	clrf    VIC_VAR_DEBOUNCECOUNTER
 	;; was it a key-down
-	btfss   DEBOUNCESTATE, 0
+	btfss   VIC_VAR_DEBOUNCESTATE, 0
 	goto    _end_action_2
 	goto    _action_2
 _end_action_2:
 
-
+    bcf STATUS, Z
 	movf DIRXN, W
-	xorlw 1
+	xorlw 0x01
 	btfss STATUS, Z ;; DIRXN == 1 ?
 	goto _false_4
 	goto _true_3
