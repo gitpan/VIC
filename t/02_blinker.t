@@ -49,6 +49,8 @@ _delay_secs_loop_0:
 _start:
     banksel   TRISC
     bcf       TRISC, TRISC0
+    banksel   ANSEL
+    bcf       ANSEL, ANS4
     banksel   PORTC
     bcf PORTC, 0
 _loop_1:
@@ -57,6 +59,9 @@ _loop_1:
     bcf PORTC, 0
     call _delay_1s
     goto _loop_1
+_end_loop_1:
+_end_start:
+    goto $
 
 _delay_1s:
     m_delay_s D'1'

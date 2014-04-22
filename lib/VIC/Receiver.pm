@@ -4,9 +4,9 @@ use warnings;
 use bigint;
 use POSIX ();
 use List::Util qw(max);
-use List::MoreUtils qw(any firstidx);
+use List::MoreUtils qw(any firstidx indexes);
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -16,6 +16,7 @@ use VIC::PIC::Any;
 
 has pic_override => undef;
 has pic => undef;
+has simulator => undef;
 has ast => {
     block_stack => [],
     block_mapping => {},
@@ -43,6 +44,8 @@ sub got_uc_select {
     $self->ast->{org} = $self->pic->org;
     $self->ast->{chip_config} = $self->pic->chip_config;
     $self->ast->{code_config} = $self->pic->code_config;
+    # create the default simulator
+    $self->simulator(VIC::PIC::Any->new_simulator(pic => $self->pic));
     return;
 }
 
@@ -53,6 +56,13 @@ sub got_pragmas {
     # get the updated config
     $self->ast->{chip_config} = $self->pic->chip_config;
     $self->ast->{code_config} = $self->pic->code_config;
+    my ($sim, $stype) = @$list if scalar @$list;
+    if ($sim eq 'simulator' and $stype) {
+        $self->simulator(VIC::PIC::Any->new_simulator(
+                    type => $stype, pic => $self->pic));
+        die "$stype is not a supported simulator" unless $self->simulator;
+        die "$stype is not a supported chip" unless $self->simulator->type eq $stype;
+    }
     return;
 }
 
@@ -73,6 +83,8 @@ sub handle_named_block {
         $expected_label = "_false_${id}";
     } elsif ($name =~ /^ISR/) {
         $expected_label = "_isr_${id}";
+    } elsif ($name eq 'Simulator') {
+        $expected_label = '_vic_simulator';
     } else {
         $expected_label = lc "_$name$id";
     }
@@ -99,7 +111,8 @@ sub handle_named_block {
         # we want to use the expected label and not the anon one unless it is an
         # anon-block
         $stack->[0] = join("::", $tag, $label, @others);
-        ## do not allow the parent to be a label
+        my $elabel = "_end$label"; # end label
+        my $slabel = $label; # start label
         if (defined $parent) {
             unless ($parent =~ /BLOCK::/) {
                 $block_label .= "::$parent";
@@ -111,10 +124,22 @@ sub handle_named_block {
                 }
             }
             my $ccount = $self->ast->{conditionals};
-            $block_label .= "::_end_conditional_$ccount" if $block_label =~ /True|False/i;
-            $block_label .= "::_end$label" if $block_label !~ /True|False/i;
+            if ($block_label =~ /True|False/i) {
+                $elabel = "_end_conditional_$ccount";
+                $slabel = "_start_conditional_$ccount";
+            }
+            $block_label .= "::$elabel";
             push @{$self->ast->{$parent}}, $block_label;
         }
+        # save this for referencing when we need to know what the parent of
+        # this block is in case we need to jump out of the block
+        $self->ast->{block_mapping}->{$name}->{parent} = $parent;
+        $self->ast->{block_mapping}->{$anon_block}->{parent} = $parent;
+        $self->ast->{block_mapping}->{$name}->{end_label} = $elabel;
+        $self->ast->{block_mapping}->{$anon_block}->{end_label} = $elabel;
+        $self->ast->{block_mapping}->{$name}->{start_label} = $slabel;
+        $self->ast->{block_mapping}->{$anon_block}->{start_label} = $slabel;
+        $self->ast->{block_mapping}->{$anon_block}->{loop} = '1' if $block_label =~ /Loop/i;
         return $block_label;
     }
 }
@@ -129,9 +154,9 @@ sub got_named_block {
 sub got_anonymous_block {
     my $self = shift;
     my $list = shift;
-    $self->flatten($list);
+    my ($anon_block, $block_stack, $parent) = @$list;
     # returns anon_block and parent_block
-    return $list;
+    return [$anon_block, $parent];
 }
 
 sub got_start_block {
@@ -148,8 +173,9 @@ sub got_start_block {
 sub got_end_block {
     my ($self, $list) = @_;
     # we are not capturing anything here
-    my $block = pop @{$self->ast->{block_stack}};
-    return $self->ast->{block_stack}->[-1];
+    my $stack = $self->ast->{block_stack};
+    my $block = pop @$stack;
+    return $stack->[-1];
 }
 
 sub got_name {
@@ -173,7 +199,15 @@ sub got_instruction {
     my ($self, $list) = @_;
     my $method = shift @$list;
     $self->flatten($list) if $list;
-    return $self->parser->throw_error("Unknown instruction '$method'") unless $self->pic->can($method);
+    my $tag = 'INS';
+    # check if it is a simulator method
+    if ($self->simulator and $self->simulator->can($method)) {
+        # this is a simulator instruction
+        $tag = 'SIM';
+    } else {
+        return $self->parser->throw_error("Unknown instruction '$method'")
+            unless $self->pic->can($method);
+    }
     my @args = ();
     while (scalar @$list) {
         my $a = shift @$list;
@@ -185,7 +219,7 @@ sub got_instruction {
             push @args, $a;
         }
     }
-    $self->update_intermediate("INS::${method}::" . join ("::", @args));
+    $self->update_intermediate("${tag}::${method}::" . join ("::", @args));
     return;
 }
 
@@ -217,8 +251,9 @@ sub got_assign_expr {
 
 sub got_conditional_statement {
     my ($self, $list) = @_;
-    my ($subject, $predicate) = @$list;
+    my ($type, $subject, $predicate) = @$list;
     return unless scalar @$predicate;
+    my $is_loop = ($type eq 'while') ? 1 : 0;
     my ($current, $parent) = $self->stack;
     my $subcond = 0;
     $subcond = 1 if $parent =~ /^conditional/;
@@ -241,9 +276,10 @@ sub got_conditional_statement {
     my $inter;
     if (scalar @condblocks < 3) {
         my ($false_label, $true_label, $end_label);
+        my ($false_name, $true_name);
         foreach my $p (@condblocks) {
-            $false_label = $1 if $p =~ /BLOCK::(\w+)::False\d+::/;
-            $true_label = $1 if $p =~ /BLOCK::(\w+)::True\d+::/;
+            ($false_label, $false_name) = ($1, $2) if $p =~ /BLOCK::(\w+)::(False\d+)::/;
+            ($true_label, $true_name) = ($1, $2) if $p =~ /BLOCK::(\w+)::(True\d+)::/;
             $end_label = $1 if $p =~ /BLOCK::.*::(_end_conditional\w+)$/;
         }
         $false_label = $end_label unless defined $false_label;
@@ -256,7 +292,19 @@ sub got_conditional_statement {
                 FALSE => $false_label,
                 TRUE => $true_label,
                 END => $end_label,
+                LOOP => $is_loop,
                 SUBCOND => $subcond);
+        my $mapping = $self->ast->{block_mapping};
+        if ($true_name and exists $mapping->{$true_name}) {
+            $mapping->{$true_name}->{loop} = "$is_loop";
+            my $ab = $mapping->{$true_name}->{block};
+            $mapping->{$ab}->{loop} = "$is_loop";
+        }
+        if ($false_name and exists $mapping->{$false_name}) {
+            $mapping->{$false_name}->{loop} = "$is_loop";
+            my $ab = $mapping->{$false_name}->{block};
+            $mapping->{$ab}->{loop} = "$is_loop";
+        }
     } else {
         return $self->parser->throw_error("Multiple predicate conditionals not implemented");
     }
@@ -502,6 +550,7 @@ sub got_variable {
         scope => $self->ast->{block_stack}->[-1],
         size => POSIX::ceil($self->pic->address_bits($varname) / 8),
     } unless exists $self->ast->{variables}->{$varname};
+    $self->ast->{variables}->{$varname}->{scope} = 'global' if $parent =~ /assert_/;
     return $varname;
 }
 
@@ -566,6 +615,39 @@ sub _update_funcs {
         }
     }
     1;
+}
+
+## assert handling is special for now
+sub got_assert_comparison {
+    my ($self, $list) = @_;
+    return unless $self->simulator;
+    $self->flatten($list) if ref $list eq 'ARRAY';
+    if (scalar @$list < 3) {
+        return $self->parser->throw_error("Error in assert statement");
+    }
+    return join("@@", @$list);
+}
+
+sub got_assert_statement {
+    my ($self, $list) = @_;
+    $self->flatten($list) if ref $list eq 'ARRAY';
+    my ($method, $cond, $msg) = @$list;
+    $msg = '' unless defined $msg;
+    $self->update_intermediate("SIM::${method}::${cond}::${msg}");
+    return;
+}
+
+sub generate_simulator_instruction {
+    my ($self, $line) = @_;
+    my @ins = split /::/, $line;
+    my $tag = shift @ins;
+    my $method = shift @ins;
+    my @code = ();
+    push @code, "\t;; $line" if $self->intermediate_inline;
+    my $code = $self->simulator->$method(@ins);
+    return $self->parser->throw_error("Error in intermediate code '$line'") unless $code;
+    push @code, $code if $code;
+    return @code;
 }
 
 sub generate_code_instruction {
@@ -765,20 +847,99 @@ sub generate_code_assign_expr {
     return @code;
 }
 
+sub find_nearest_loop {
+    my ($self, $mapping, $child) = @_;
+    return unless exists $mapping->{$child};
+    if (exists $mapping->{$child}->{loop}) {
+        return $child if $mapping->{$child}->{loop} eq '1';
+    }
+    return unless $mapping->{$child}->{parent};
+    return $self->find_nearest_loop($mapping, $mapping->{$child}->{parent});
+}
+
 sub generate_code_blocks {
     my ($self, $line, $block) = @_;
     my @code = ();
     my $ast = $self->ast;
-    my $mapped_block = $ast->{block_mapping}->{$block}->{block} || $block;
+    my $mapping = $ast->{block_mapping};
+    my $mapped_block = $mapping->{$block}->{block} || $block;
     my ($tag, $label, $child, $parent, $parent_label, $end_label) = split/::/, $line;
     return if ($child eq $block or $child eq $mapped_block or $child eq $parent);
     return if exists $ast->{generated_blocks}->{$child};
     push @code, "\t;; $line" if $self->intermediate_inline;
     my @newcode = $self->generate_code($ast, $child);
-    if ($child =~ /^(?:Action|True|False|ISR)/) {
-        push @newcode, "\tgoto $end_label;; go back to end of conditional\n" if @newcode;
+    my @bindexes = indexes { $_ eq 'BREAK' } @newcode;
+    my @cindexes = indexes { $_ eq 'CONTINUE' } @newcode;
+    if ($child =~ /^(?:True|False)/ and @newcode) {
+        my $cond_end = "\tgoto $end_label;; go back to end of conditional\n";
+        # handle break
+        if (@bindexes) {
+            #find top most parent loop
+            my $el = $self->find_nearest_loop($mapping, $child);
+            $el = $mapping->{$el}->{end_label} if $el;
+            my $break_end;
+            unless ($el) {
+                $break_end = "\t;; break from existing block since $child not part of any loop\n";
+                $break_end .= "\tgoto $end_label;; break from the conditional\n";
+            } else {
+                $break_end = "\tgoto $el;; break from the conditional\n";
+            }
+            $newcode[$_] = $break_end foreach @bindexes;
+        }
+        # handle continue
+        if (@cindexes) {
+            #find top most parent loop
+            my $sl = $self->find_nearest_loop($mapping, $child);
+            $sl = $mapping->{$sl}->{start_label} if $sl;
+            my $cont_start = "\tgoto $sl;; go back to start of conditional\n" if $sl;
+            $cont_start = "\tnop ;; $child or $parent have no start_label" unless $sl;
+            $newcode[$_] = $cont_start foreach @cindexes;
+        }
+        # add the end _label
+        # if the current block is a loop, the end label is the start label
+        if (exists $mapping->{$child}->{loop} and $mapping->{$child}->{loop} eq '1') {
+            my $slabel = $mapping->{$child}->{start_label} || $end_label;
+            my $start_code = "\tgoto $slabel ;; go back to start of conditional\n" if $slabel;
+            $start_code = $cond_end unless $start_code;
+            push @newcode, $start_code;
+        } else {
+            push @newcode, $cond_end;
+        }
+        push @newcode, ";;;; end of $label";
         # hack into the function list
-        $ast->{funcs}->{$label} = [@newcode] if @newcode;
+        $ast->{funcs}->{$label} = [@newcode];
+    } elsif ($child =~ /^(?:Action|ISR)/ and @newcode) {
+        my $cond_end = "\tgoto $end_label ;; go back to end of block\n";
+        if (@bindexes) {
+            # we just break from the current block since we are not in any
+            # sub-block
+            my $break_end = "\tgoto $end_label ;; break from the block\n";
+            $newcode[$_] = $break_end foreach @bindexes;
+        }
+        if (@cindexes) {
+            # continue gets ignored
+            my $cont_start = ";; continue is a NOP for $child block";
+            $newcode[$_] = $cont_start foreach @cindexes;
+        }
+        push @newcode, $cond_end, ";;;; end of $label";
+        # hack into the function list
+        $ast->{funcs}->{$label} = [@newcode];
+    } elsif ($child =~ /^Loop/ and @newcode) {
+        my $cond_end = "\tgoto $end_label;; go back to end of block\n";
+        if (@bindexes) {
+            # we just break from the current block since we are not in any
+            # sub-block and are in a Loop already
+            my $break_end = "\tgoto $end_label ;; break from the block\n";
+            $newcode[$_] = $break_end foreach @bindexes;
+        }
+        if (@cindexes) {
+            # continue goes to start of the loop
+            my $cont_start = "\tgoto $label ;; go back to start of loop\n";
+            $newcode[$_] = $cont_start foreach @cindexes;
+        }
+        push @code, @newcode;
+        push @code, "\tgoto $label ;;;; end of $label\n";
+        push @code, "$end_label:\n";
     } else {
         push @code, @newcode if @newcode;
     }
@@ -792,7 +953,6 @@ sub generate_code_blocks {
         my ($ptag, $plabel) = split /::/, $ast->{$parent}->[0];
         push @code, "\tgoto $plabel;; $plabel" if $plabel;
     }
-    push @code, "\tgoto $label" if $child =~ /^Loop/;
     return @code;
 }
 
@@ -800,7 +960,7 @@ sub generate_code_conditionals {
     my ($self, @condblocks) = @_;
     my @code = ();
     my $ast = $self->ast;
-    my $end_label;
+    my ($start_label, $end_label, $is_loop);
     my $blockcount = scalar @condblocks;
     my $index = 0;
     foreach my $line (@condblocks) {
@@ -810,25 +970,27 @@ sub generate_code_conditionals {
         $index++ if $hh{SUBCOND};
         # for multiple if-else-if-else we adjust the labels
         # for single ones we do not
+        $start_label = "_start_conditional_$hh{COND}" unless defined $start_label;
+        $is_loop = $hh{LOOP} unless defined $is_loop;
+        $end_label = $hh{END} unless defined $end_label;
+        # we now modify the TRUE/FALSE/END labels
         if ($blockcount > 1) {
             my $el = "$hh{END}_$index"; # new label
             $hh{FALSE} = $el if $hh{FALSE} eq $hh{END};
             $hh{TRUE} = $el if $hh{TRUE} eq $hh{END};
-            $end_label = $hh{END} unless defined $end_label;
             $hh{END} = $el;
         }
         if ($subj =~ /^\d+?$/) { # if subject is a literal
-            my $code = '';
-            push @code, "\t;; $line\n" if $self->intermediate_inline;
+            push @code, "\t;; $line" if $self->intermediate_inline;
             if ($subj eq 0) {
                 # is false
-                $code .= "\tgoto $hh{FALSE}\n" if $hh{FALSE};
+                push @code, "\tgoto $hh{FALSE}" if $hh{FALSE};
             } else {
                 # is true
-                $code .= "\tgoto $hh{TRUE}\n" if $hh{TRUE};
+                push @code, "\tgoto $hh{TRUE}" if $hh{TRUE};
             }
-            $code .= "\tgoto $hh{END}\n";
-            push @code, $code;
+            push @code, "\tgoto $hh{END}" if $hh{END};
+            push @code, "$hh{END}:\n" if $hh{END};
         } elsif (exists $ast->{variables}->{$subj}) {
             ## we will never get here actually since we have eliminated this
             #possibility
@@ -841,7 +1003,7 @@ sub generate_code_conditionals {
             if ($self->intermediate_inline) {
                 push @code, "\t;; TMP_VAR DEPS - $subj, ". join (',', @deps) if @deps;
                 push @code, "\t;; VAR DEPS - ". join (',', @vdeps) if @vdeps;
-                push @code, "\t;; $subj = $tmp_code\n";
+                push @code, "\t;; $subj = $tmp_code";
             }
             if (scalar @deps) {
                 $ast->{tmp_stack_size} = max(scalar(@deps), $ast->{tmp_stack_size});
@@ -876,7 +1038,8 @@ sub generate_code_conditionals {
             return $self->parser->throw_error("Error in intermediate code '$line'");
         }
     }
-    push @code, "$end_label:\n" if defined $end_label and $blockcount > 1;
+    unshift @code, "$start_label:" if defined $start_label;
+    push @code, "$end_label:" if defined $end_label and $blockcount > 1;
     return @code;
 }
 
@@ -900,8 +1063,9 @@ sub generate_code {
         } elsif ($line =~ /^SET::\w+/) {
             push @code, $self->generate_code_assign_expr($line);
         } elsif ($line =~ /^LABEL::(\w+)/) {
+            my $lbl = $1;
             push @code, ";; $line" if $self->intermediate_inline;
-            push @code, "$1:\n"; # label name
+            push @code, "$lbl:\n" if $lbl ne '_vic_simulator';
         } elsif ($line =~ /^COND::(\d+)::/) {
             my $cblock = $1;
             my @condblocks = ( $line );
@@ -911,6 +1075,8 @@ sub generate_code {
                 delete $blocks->[$i - 1];
             }
             push @code, $self->generate_code_conditionals(reverse @condblocks);
+        } elsif ($line =~ /^SIM::\w+/) {
+            push @code, $self->generate_simulator_instruction($line);
         } else {
             $self->parser->throw_error("Intermediate code '$line' cannot be handled");
         }
@@ -926,6 +1092,7 @@ sub final {
     # generate main code first so that any addition to functions, macros,
     # variables during generation can be handled after
     my @main_code = $self->generate_code($ast, 'Main');
+    push @main_code, "_end_start:\n", "\tgoto \$\t;;;; end of Main";
     my $main_code = join("\n", @main_code);
     # variables are part of macros and need to go first
     my $variables = '';
@@ -935,13 +1102,16 @@ sub final {
     foreach my $var (sort(keys %$vhref)) {
         # should we care about scope ?
         $variables .= "$vhref->{$var}->{name} res $vhref->{$var}->{size}\n";
-        push @global_vars, $vhref->{$var}->{name};
+        if (($vhref->{$var}->{scope} eq 'global') or
+            ($ast->{code_config}->{variable}->{export})) {
+            push @global_vars, $vhref->{$var}->{name};
+        }
     }
     if ($ast->{tmp_stack_size}) {
         $variables .= "VIC_STACK res $ast->{tmp_stack_size}\t;; temporary stack\n";
     }
     #XXX $ast->{code_config}->{variable};
-    if ($ast->{code_config}->{variable}->{export} and scalar @global_vars) {
+    if (scalar @global_vars) {
         # export the variables
         $variables .= "\tglobal ". join (", ", @global_vars) . "\n";
     }
@@ -955,6 +1125,7 @@ sub final {
     my $isr_code = '';
     my $funcs = '';
 #    YYY $ast->{tmp_variables};
+#    YYY $ast->{block_mapping};
     foreach my $fn (sort(keys %{$ast->{funcs}})) {
         my $fn_val = $ast->{funcs}->{$fn};
         # the default ISR checks to be done first
@@ -989,10 +1160,19 @@ sub final {
         $isr_code = "\tgoto _start\n$isr_entry\n$isr_checks\n$isr_code\n$isr_exit\n";
         $variables .= "\n$isr_var\n";
     }
+    my ($sim_include, $sim_setup_code) = ('', '');
+    if (defined $self->simulator and defined $ast->{Simulator}) {
+        my $stype = $self->simulator->type;
+        $sim_include .= ";;;; generated code for $stype header file\n";
+        $sim_include .= '#include <' . $self->simulator->include .">\n";
+        my @setup_code = $self->generate_code($ast, 'Simulator');
+        my $init_code = $self->simulator->init_code;
+        $sim_setup_code .= join("\n", $init_code, @setup_code) if scalar @setup_code;
+    }
     my $pic = <<"...";
 ;;;; generated code for PIC header file
 #include <$ast->{include}>
-
+$sim_include
 ;;;; generated code for variables
 $variables
 ;;;; generated code for macros
@@ -1002,13 +1182,14 @@ $ast->{chip_config}
 
 \torg $ast->{org}
 
+$sim_setup_code
+
 $isr_code
 
 $main_code
 
 ;;;; generated code for functions
 $funcs
-
 ;;;; generated code for end-of-file
 \tend
 ...

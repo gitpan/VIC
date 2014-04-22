@@ -165,25 +165,23 @@ _start:
 
 	banksel TRISC
 	clrf TRISC
+    banksel ANSEL
+    movlw 0x0F
+    andwf ANSEL, F
+    banksel ANSELH
+    movlw 0xFC
+    andwf ANSELH, F
 	banksel PORTC
 	clrf PORTC
 
 	banksel TRISA
 	bsf TRISA, TRISA0
 	banksel ANSEL
-	movlw 0x01
-	movwf ANSEL
-	movlw 0x00
-	movwf ANSELH
+    bsf ANSEL, ANS0
 	banksel PORTA
 
 	banksel TRISA
 	bcf TRISA, TRISA3
-	banksel ANSEL
-	movlw 0xFF
-	movwf ANSEL
-	movlw 0xFF
-	movwf ANSELH
 	banksel PORTA
 
 	banksel ADCON1
@@ -264,6 +262,7 @@ _debounce_state_check:
 	goto    _action_3
 _end_action_3:
 
+_start_conditional_0:
     bcf STATUS, Z
 	movf DIRXN, W
 	xorlw 0x01
@@ -274,6 +273,9 @@ _end_conditional_0:
 
 
 	goto _loop_2
+_end_loop_2:
+_end_start:
+    goto $
 
 ;;;; generated code for functions
 ;;;; generated code for Action2

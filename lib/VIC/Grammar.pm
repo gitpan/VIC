@@ -2,7 +2,7 @@ package VIC::Grammar;
 use strict;
 use warnings;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -14,7 +14,7 @@ sub make_tree {
   {
     '+grammar' => 'vic',
     '+toprule' => 'program',
-    '+version' => '0.0.8',
+    '+version' => '0.1.0',
     'COMMA' => {
       '.rgx' => qr/\G,/
     },
@@ -51,6 +51,78 @@ sub make_tree {
         },
         {
           '.ref' => 'nested_conditional'
+        }
+      ]
+    },
+    'assert_comparison' => {
+      '.all' => [
+        {
+          '.ref' => 'assert_value'
+        },
+        {
+          '.ref' => 'compare_operator'
+        },
+        {
+          '.ref' => 'assert_value'
+        }
+      ]
+    },
+    'assert_condition' => {
+      '.ref' => 'assert_comparison'
+    },
+    'assert_statement' => {
+      '.all' => [
+        {
+          '.ref' => 'name'
+        },
+        {
+          '.ref' => 'assert_condition'
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '+max' => 1,
+          '.all' => [
+            {
+              '.ref' => 'COMMA'
+            },
+            {
+              '.ref' => '_'
+            },
+            {
+              '.ref' => 'string'
+            }
+          ]
+        },
+        {
+          '.ref' => '_'
+        },
+        {
+          '.ref' => 'line_ending'
+        }
+      ]
+    },
+    'assert_value' => {
+      '.all' => [
+        {
+          '.ref' => '_'
+        },
+        {
+          '.any' => [
+            {
+              '.ref' => 'validated_variable'
+            },
+            {
+              '.ref' => 'variable'
+            },
+            {
+              '.ref' => 'number'
+            }
+          ]
+        },
+        {
+          '.ref' => '_'
         }
       ]
     },
@@ -93,14 +165,7 @@ sub make_tree {
       '.rgx' => qr/\G[\ \t]*\r?\n/
     },
     'block' => {
-      '.any' => [
-        {
-          '.ref' => 'named_block'
-        },
-        {
-          '.ref' => 'conditional_block'
-        }
-      ]
+      '.ref' => 'named_block'
     },
     'boolean' => {
       '.rgx' => qr/\G(TRUE|FALSE|true|false|0|1)/
@@ -153,25 +218,6 @@ sub make_tree {
     'complement_operator' => {
       '.rgx' => qr/\G(\~|!)/
     },
-    'conditional_block' => {
-      '.all' => [
-        {
-          '.ref' => '_'
-        },
-        {
-          '.rgx' => qr/\Gwhile|until/
-        },
-        {
-          '.ref' => '_'
-        },
-        {
-          '.ref' => 'conditional_subject'
-        },
-        {
-          '.ref' => 'anonymous_block'
-        }
-      ]
-    },
     'conditional_predicate' => {
       '.all' => [
         {
@@ -216,7 +262,7 @@ sub make_tree {
           '.ref' => '_'
         },
         {
-          '.rgx' => qr/\Gif/
+          '.rgx' => qr/\G(if|while)/
         },
         {
           '.ref' => '_'
@@ -583,6 +629,9 @@ sub make_tree {
         },
         {
           '.ref' => 'conditional_statement'
+        },
+        {
+          '.ref' => 'assert_statement'
         },
         {
           '.ref' => 'block'

@@ -53,8 +53,15 @@ _start:
     ;; turn on PORTC's pin 0 as output
     banksel TRISC
     clrf TRISC
+    banksel ANSEL
+    movlw 0x0F
+    andwf ANSEL, F
+    banksel ANSELH
+    movlw 0xFC
+    andwf ANSELH, F
     banksel PORTC
     clrf    PORTC
+
     movlw  0x08
     movwf DISPLAY
 _loop_1:
@@ -67,6 +74,9 @@ _loop_1:
     btfsc STATUS, C
     bsf DISPLAY, 7
     goto _loop_1
+_end_loop_1:
+_end_start:
+    goto $
 
 _delay_1s:
     m_delay_s D'1'

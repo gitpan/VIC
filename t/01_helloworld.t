@@ -9,7 +9,6 @@ PIC P16F690;
 Main { # set the Main function
      digital_output RC0; # mark pin RC0 as output
      write RC0, 1; # write the value 1 to RC0
-     hang;
 } # end the Main function
 ...
 
@@ -24,9 +23,12 @@ _start:
     ;; turn on PORTC's pin 0 as output
      banksel   TRISC
      bcf       TRISC, TRISC0
+     banksel   ANSEL
+     bcf       ANSEL, ANS4
      banksel   PORTC
      bcf       PORTC, 0
      bsf       PORTC, 0
+_end_start:
      goto      $
      end
 ...

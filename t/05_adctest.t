@@ -85,16 +85,15 @@ _start:
 
 	banksel TRISC
 	bcf TRISC, TRISC0
+    banksel   ANSEL
+    bcf       ANSEL, ANS4
 	banksel PORTC
 	bcf PORTC, 0
 
 	banksel TRISA
 	bsf TRISA, TRISA0
 	banksel ANSEL
-	movlw 0x01
-	movwf ANSEL
-	movlw 0x00
-	movwf ANSELH
+    bsf ANSEL, ANS0
 	banksel PORTA
 
 	banksel ADCON1
@@ -132,6 +131,9 @@ _loop_1:
 	call _delay_100us
 
 	goto _loop_1
+_end_loop_1:
+_end_start:
+    goto $
 
 ;;;; generated code for functions
 _delay_100us:

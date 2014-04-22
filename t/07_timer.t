@@ -39,6 +39,12 @@ _start:
 
 	banksel TRISC
 	clrf TRISC
+    banksel ANSEL
+    movlw 0x0F
+    andwf ANSEL, F
+    banksel ANSELH
+    movlw 0xFC
+    andwf ANSELH, F
 	banksel PORTC
 	clrf PORTC
 
@@ -60,6 +66,9 @@ _loop_1:
 	goto _action_2
 _end_action_2:
     goto _loop_1
+_end_loop_1:
+_end_start:
+    goto $
 
 ;;;; generated code for functions
 ;;;; generated code for Action2

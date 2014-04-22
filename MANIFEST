@@ -7,6 +7,7 @@ lib/VIC/Command.pm
 lib/VIC/Grammar.pm
 lib/VIC/Parser.pm
 lib/VIC/PIC/Any.pm
+lib/VIC/PIC/Gpsim.pm
 lib/VIC/PIC/P16F690.pm
 lib/VIC/Receiver.pm
 LICENSE
@@ -22,12 +23,11 @@ share/examples/debouncer.vic
 share/examples/GNUmakefile
 share/examples/helloworld.vic
 share/examples/interrupt.vic
-share/examples/math.vic
+share/examples/loopbreak.vic
 share/examples/math8bit.vic
 share/examples/reversible.vic
 share/examples/rotater.vic
 share/examples/timer.vic
-share/examples/uart.vic
 share/examples/varrotate.vic
 share/rebuild-grammar
 share/rebuild-grammar.PL
@@ -47,4 +47,7 @@ t/09_interrupt.t
 t/10_math.t
 t/11_math8bit.t
 t/12_conditional.t
+t/13_loopbreak.t
+t/14_helloworldsim.t
+t/15_rotatersim.t
 t/TestVIC.pm
