@@ -5,7 +5,7 @@ my $input = <<'...';
 PIC P16F690;
 
 # A Comment
-pragma simulator gpsim;
+pragma simulator disable;
 
 Main { # set the Main function
      digital_output RC0; # mark pin RC0 as output
@@ -25,8 +25,6 @@ Simulator {
 my $output = <<'...';
 ;;;; generated code for PIC header file
 #include <p16f690.inc>
-;;;; generated code for gpsim header file
-#include <coff.inc>
 
 ;;;; generated code for variables
 
@@ -39,32 +37,6 @@ my $output = <<'...';
 
 	org 0
 
-;;;; generated common code for the Simulator
-	.sim "module library libgpsim_modules"
-	.sim "p16f690.xpos = 200"
-	.sim "p16f690.ypos = 200"
-	.sim "p16f690.frequency = 4000000"
-
-;;;; generated code for Simulator
-	.sim "module load led L0"
-	.sim "L0.xpos = 100"
-	.sim "L0.ypos = 50"
-    .sim "L0.color = red"
-	.sim "node rc0led"
-	.sim "attach rc0led portc0 L0.in"
-
-	.sim "break c 10000000"
-
-	.sim "log lxt helloworld.lxt"
-
-	.sim "log r portc"
-	.sim "log w portc"
-
-	.sim "scope.ch0 = \"portc0\""
-
-
-
-
 ;;;; generated code for Main
 _start:
 
@@ -76,8 +48,6 @@ _start:
 	bcf PORTC, 0
 
 	bsf PORTC, 0
-	.assert "(portc & 0x01) == 0x01, \"Pin RC0 should be 1\""
-    nop ;; needed for the assert
 
 _end_start:
 

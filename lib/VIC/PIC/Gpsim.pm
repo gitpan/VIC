@@ -5,7 +5,7 @@ use bigint;
 use Carp;
 use Pegex::Base; # use this instead of Mo
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 $VERSION = eval $VERSION;
 
 has type => 'gpsim';
@@ -18,25 +18,49 @@ has led_count => 0;
 
 has scope_channels => 0;
 
+has stimulus_count => 0;
+
+has should_autorun => 0;
+
+has disable => 0;
+
+sub supports_modifier {
+    my $self = shift;
+    my $mod = shift;
+    return 1 if $mod =~ /^(?:every|wave)$/i;
+    0;
+}
+
 sub init_code {
     my $self = shift;
     my $pic = '';
     $pic = $self->pic->type if $self->pic;
+    my $freq = $self->pic->frequency if $self->pic;
+    if ($freq) {
+        $freq = qq{\t.sim "$pic.frequency = $freq"};
+    } else {
+        $freq = '';
+    }
     return << "...";
 ;;;; generated common code for the Simulator
 \t.sim "module library libgpsim_modules"
-\t.sim "$pic.xpos = 200";
-\t.sim "$pic.ypos = 200";
+\t.sim "$pic.xpos = 200"
+\t.sim "$pic.ypos = 200"
+$freq
 ...
 }
 
 sub _gen_led {
     my $self = shift;
-    my ($id, $x, $y, $name, $port) = @_;
+    my ($id, $x, $y, $name, $port, $color) = @_;
+    $color = 'red' unless defined $color;
+    $color = 'red' unless $color =~ /red|orange|green|yellow|blue/i;
+    $color = lc $color;
     return << "...";
 \t.sim "module load led L$id"
 \t.sim "L$id.xpos = $x"
 \t.sim "L$id.ypos = $y"
+\t.sim "L$id.color = $color"
 \t.sim "node $name"
 \t.sim "attach $name $port L$id.in"
 ...
@@ -104,7 +128,7 @@ sub _get_portpin {
 }
 
 sub attach_led {
-    my ($self, $port, $count) = @_;
+    my ($self, $port, $count, $color) = @_;
     $count = 1 unless $count;
     $count = 1 if int($count) < 1;
     my $code = '';
@@ -116,7 +140,7 @@ sub attach_led {
         my $y = 50 + 50 * $c;
         # use the default pin 0 here
         my $simport = $self->_get_simport($port, 0);
-        $code = $self->_gen_led($c, $x, $y, $node, $simport);
+        $code = $self->_gen_led($c, $x, $y, $node, $simport, $color);
     } else {
         $count--;
         if ($self->pic) {
@@ -126,7 +150,7 @@ sub attach_led {
                 my $y = 50 + 50 * $c;
                 my $node = lc $port . $c . 'led';
                 my $simport = $self->_get_simport($port, $_);
-                $code .= $self->_gen_led($c, $x, $y, $node, $simport);
+                $code .= $self->_gen_led($c, $x, $y, $node, $simport, $color);
             }
             $self->led_count($self->led_count + $count);
         }
@@ -134,7 +158,50 @@ sub attach_led {
     return $code;
 }
 
-sub limit {
+sub attach_led7seg {
+    my ($self, @pins) = @_;
+    my $code = '';
+    my @simpins = ();
+    my $color = 'red';
+    foreach my $p (@pins) {
+        if (exists $self->pic->pins->{$p}) {
+            push @simpins, $p;
+        } elsif (exists $self->pic->ports->{$p}) {
+            my $port = $self->pic->ports->{$p};
+            foreach (sort(keys %{$self->pic->pins})) {
+                next unless defined $self->pic->pins->{$_}->[0];
+                push @simpins, $_ if $self->pic->pins->{$_}->[0] eq $port;
+            }
+        } elsif ($p =~ /red|orange|green|yellow|blue/i) {
+            $color = $p;
+            next;
+        } else {
+            carp "Ignoring port $p as it doesn't exist\n";
+        }
+    }
+    return unless scalar @simpins;
+    my $id = $self->led_count;
+    $self->led_count($id + 1);
+    my $x = 500;
+    my $y = 50 + 50 * $id;
+    $code .= << "...";
+\t.sim "module load led_7segments L$id"
+\t.sim "L$id.xpos = $x"
+\t.sim "L$id.ypos = $y"
+...
+    my @nodes = qw(cc seg0 seg1 seg2 seg3 seg4 seg5 seg6);
+    foreach my $n (@nodes) {
+        my $p = shift @simpins;
+        my $sp = $self->_get_simport($p);
+        $code .= << "...";
+\t.sim "node $n"
+\t.sim "attach $n $sp L$id.$n"
+...
+    }
+    return $code;
+}
+
+sub stop_after {
     my ($self, $usecs) = @_;
     # convert $secs to cycles
     my $cycles = $usecs * 10;
@@ -152,17 +219,20 @@ sub logfile {
 }
 
 sub log {
-    my ($self, $port) = @_;
-    my $reg = $self->_get_simreg($port);
-    return unless $reg;
-    my $log_init = '';
-    return << "...";
+    my $self = shift;
+    my $code = '';
+    foreach my $port (@_) {
+        my $reg = $self->_get_simreg($port);
+        next unless $reg;
+        $code .= << "...";
 \t.sim "log r $reg"
 \t.sim "log w $reg"
 ...
+    }
+    return $code;
 }
 
-sub scope {
+sub _set_scope {
     my ($self, $port) = @_;
     my $simport = $self->_get_simport($port);
     my $chnl = $self->scope_channels;
@@ -189,6 +259,15 @@ sub scope {
     }
 }
 
+sub scope {
+    my $self = shift;
+    my $code = '';
+    foreach my $port (@_) {
+        $code .= $self->_set_scope($port);
+    }
+    return $code;
+}
+
 ### have to change the operator back to the form acceptable by gpsim
 sub _get_operator {
     my $self = shift;
@@ -200,6 +279,7 @@ sub _get_operator {
 
 sub sim_assert {
     my ($self, $condition, $msg) = @_;
+    my $assert_msg;
     if ($condition =~ /@@/) {
         my @args = split /@@/, $condition;
         my $literal = qr/^\d+$/;
@@ -239,13 +319,88 @@ sub sim_assert {
             $condition = "$lhs $op2 $rhs";
         }
         #TODO: handle more complex expressions
+        $msg  = "$condition is false" unless $msg;
+        $assert_msg = qq{$condition, \\\"$msg\\\"};
+    } else {
+        if (defined $condition and defined $msg) {
+            $assert_msg = qq{$condition, \\\"$msg\\\"};
+        } elsif (defined $condition and not defined $msg) {
+            $assert_msg = qq{\\\"$condition\\\"};
+        } elsif (defined $msg and not defined $condition) {
+            $assert_msg = qq{\\\"$msg\\\"};
+        } else {
+            $assert_msg = qq{\\\"user requested an assert\\\"};
+        }
     }
-    $msg  = "$condition is false" unless $msg;
+
     return << "..."
 \t;; break if the condition evaluates to false
-\t.assert "$condition, \\\"$msg\\\""
+\t.assert "$assert_msg"
 \tnop ;; needed for the assert
 ...
+}
+
+sub stimulate {
+    my $self = shift;
+    my $pin = shift;
+    my %hh = ();
+    foreach my $href (@_) {
+        %hh = (%hh, %$href);
+    }
+    my $period = '';
+    $period = $hh{EVERY} if defined $hh{EVERY};
+    $period = qq{\t.sim "period $period"} if defined $period;
+    my $wave = '';
+    my $wave_type = 'digital';
+    if (exists $hh{WAVE} and ref $hh{WAVE} eq 'ARRAY') {
+        my $arr = $hh{WAVE};
+        $wave = "\t.sim \"{ " . join(',', @$arr) . " }\"" if scalar @$arr;
+        my $ad = 0;
+        foreach (@$arr) {
+            $ad |= 1 unless /^\d+$/;
+        }
+        $wave_type = 'analog' if $ad;
+    }
+    my $start = $hh{START} || 0;
+    $start = qq{\t.sim "start_cycle $start"};
+    my $init = $hh{INITIAL} || 0;
+    $init = qq{\t.sim "initial_state $init"};
+    my $num = $self->stimulus_count;
+    $self->stimulus_count($num + 1);
+    my $node = "stim$num$pin";
+    my $simpin = $self->_get_simport($pin);
+    return << "..."
+\t.sim \"echo creating stimulus number $num\"
+\t.sim \"stimulus asynchronous_stimulus\"
+$init
+$start
+\t.sim \"$wave_type\"
+$period
+$wave
+\t.sim \"name stim$num\"
+\t.sim \"end\"
+\t.sim \"echo done creating stimulus number $num\"
+\t.sim \"node $node\"
+\t.sim \"attach $node stim$num $simpin\"
+...
+}
+
+sub get_autorun_code {
+    return qq{\t.sim "run"\n};
+}
+
+sub autorun {
+    my $self = shift;
+    $self->should_autorun(1);
+    return "\t;;;; will autorun on start\n";
+}
+
+sub stopwatch {
+    my ($self, $rollover) = @_;
+    my $code = qq{\t.sim "stopwatch.enable = true"\n};
+    $code .= qq{\t.sim "stopwatch.rollover = $rollover"\n} if defined $rollover;
+    $code .= qq{\t.sim "break stopwatch"\n} if defined $rollover;
+    return $code;
 }
 
 1;

@@ -6,7 +6,7 @@ use POSIX ();
 use List::Util qw(max);
 use List::MoreUtils qw(any firstidx indexes);
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -26,8 +26,10 @@ has ast => {
     tmp_variables => {},
     conditionals => 0,
     tmp_stack_size => 0,
+    asserts => 0,
 };
 has intermediate_inline => undef;
+has global_collections => {};
 
 sub stack { reverse @{shift->parser->stack}; }
 
@@ -57,11 +59,19 @@ sub got_pragmas {
     $self->ast->{chip_config} = $self->pic->chip_config;
     $self->ast->{code_config} = $self->pic->code_config;
     my ($sim, $stype) = @$list if scalar @$list;
-    if ($sim eq 'simulator' and $stype) {
+    if ($sim eq 'simulator' and $stype !~ /disable/i) {
         $self->simulator(VIC::PIC::Any->new_simulator(
                     type => $stype, pic => $self->pic));
-        die "$stype is not a supported simulator" unless $self->simulator;
-        die "$stype is not a supported chip" unless $self->simulator->type eq $stype;
+        if ($self->simulator) {
+            unless ($self->simulator->type eq $stype) {
+                warn "$stype is not a supported chip. Disabling simulator.";
+                $self->simulator->disable(1);
+            }
+        } else {
+            die "$stype is not a supported simulator.";
+        }
+    } elsif ($sim eq 'simulator' and $stype =~ /disable/i) {
+        $self->simulator->disable(1) if $self->simulator;
     }
     return;
 }
@@ -249,6 +259,83 @@ sub got_assign_expr {
     return;
 }
 
+sub got_array_element {
+    my ($self, $list) = @_;
+    my $var1 = shift @$list;
+    my $rhsx = $self->got_expr_value($list);
+    if (ref $rhsx eq 'ARRAY') {
+        XXX $rhsx; # why would this even happen
+    }
+    my $tvref = $self->ast->{tmp_variables};
+    my $tvar = sprintf "_vic_tmp_%02d", scalar(keys %$tvref);
+    my $vref = $self->ast->{variables}->{$var1};
+    my @ops = ('OP');
+    if (exists $vref->{type} and $vref->{type} eq 'HASH') {
+        push @ops, $vref->{label}, 'TBLIDX', $rhsx, $vref->{size};
+    } elsif (exists $vref->{type} and $vref->{type} eq 'ARRAY') {
+        push @ops, $vref->{label}, 'ARRIDX', $rhsx, $vref->{size};
+    } elsif (exists $vref->{type} and $vref->{type} eq 'string') {
+        push @ops, $vref->{label}, 'STRIDX', $rhsx, $vref->{size};
+    } else {
+        # this must be a byte
+        return $self->parser->throw_error(
+                    "Variable '$var1' is not an array, table or string");
+    }
+    $tvref->{$tvar} = join("::", @ops);
+    # create a new variable here
+    my $varname = sprintf "vic_el_%02d", scalar(keys %$tvref);
+    $varname = $self->got_variable([$varname]);
+    if ($varname) {
+        $self->update_intermediate("SET::ASSIGN::${varname}::${tvar}");
+        return $varname;
+    }
+    return $self->parser->throw_error(
+        "Unable to create intermediary variable '$varname'") unless $varname;
+}
+
+sub got_declaration {
+    my ($self, $list) = @_;
+    my $lhs = shift @$list;
+    my $rhs;
+    if (scalar @$list == 1) {
+        $rhs = shift @$list;
+    } else {
+        $rhs = $list;
+    }
+    # TODO: generate intermediate code here
+    if (ref $rhs eq 'HASH' or ref $rhs eq 'ARRAY') {
+        if (exists $self->ast->{variables}->{$lhs}) {
+            my $label = lc "_table_$lhs" if ref $rhs eq 'HASH' and exists $rhs->{TABLE};
+            my $szpref = "VIC_TBLSZ_" if ref $rhs eq 'HASH' and exists $rhs->{TABLE};
+            $szpref = "VIC_ARRSZ_" if ref $rhs eq 'ARRAY';
+            $self->ast->{variables}->{$lhs}->{type} = ref $rhs;
+            $self->ast->{variables}->{$lhs}->{data} = $rhs;
+            $self->ast->{variables}->{$lhs}->{label} = $label || $lhs;
+            if ($szpref) {
+                $self->ast->{variables}->{$lhs}->{size} = $szpref .
+                    $self->ast->{variables}->{$lhs}->{name};
+            }
+        } else {
+            return $self->parser->throw_error("Variable '$lhs' doesn't exist");
+        }
+    } else {
+        # var = number | string etc.
+        if ($rhs =~ /^-?\d+$/) {
+            # we just use the got_assign_expr. this should never be called in
+            # reality but is here in case the grammar rules change
+            $self->update_intermetdiate("SET::ASSIGN::${lhs}::${rhs}");
+        } else {
+            # handle strings here
+            $self->ast->{variables}->{$lhs}->{type} = 'string';
+            $self->ast->{variables}->{$lhs}->{data} = $rhs;
+            $self->ast->{variables}->{$lhs}->{label} = $lhs;
+            $self->ast->{variables}->{$lhs}->{size} = "VIC_STRSZ_" .
+                    $self->ast->{variables}->{$lhs}->{name};
+        }
+    }
+    return;
+}
+
 sub got_conditional_statement {
     my ($self, $list) = @_;
     my ($type, $subject, $predicate) = @$list;
@@ -394,7 +481,7 @@ sub got_expr_value {
             my $tvar = sprintf "_vic_tmp_%02d", scalar(keys %$vref);
             $vref->{$tvar} = "OP::${var1}::${op}::${var2}";
             return $tvar;
-        } else {
+        } elsif (scalar @$list > 3) {
             # handle precedence with left-to-right association
             my @arr = @$list;
             my $idx = firstidx { $_ =~ /^MUL|DIV|MOD$/ } @arr;
@@ -427,6 +514,8 @@ sub got_expr_value {
             }
 #            YYY $self->ast->{tmp_variables};
             return $self->got_expr_value([@arr]);
+        } else {
+            return $list;
         }
     } else {
         return $list;
@@ -510,6 +599,40 @@ sub got_unary_operator {
     return $self->parser->throw_error("Increment/Decrement operator '$op' is not supported");
 }
 
+sub got_array {
+    my ($self, $arr) = @_;
+    $self->flatten($arr) if ref $arr eq 'ARRAY';
+    $self->global_collections->{"$arr"} = $arr;
+    return $arr;
+}
+
+sub got_modifier_constant {
+    my ($self, $list) = @_;
+    # we don't flatten since $value can be an array as well
+    my ($modifier, $value) = @$list;
+    $modifier = uc $modifier;
+    ## first check if the modifier is an operator
+    my $method = $self->pic->validate_modifier_operator($modifier);
+    $self->flatten($value) if ($method and ref $value eq 'ARRAY');
+    return $self->got_expr_value(["MOP::${modifier}::${value}"]) if $method;
+    ## if not then check if it is a type modifier for use by the simulator
+    if ($self->simulator and $self->simulator->supports_modifier($modifier)) {
+        my $hh = { $modifier => $value };
+        $self->global_collections->{"$hh"} = $hh;
+        return $hh;
+    }
+    ## ok check if the modifier is a type modifier for code generation
+    ## this is reallly a bad hack
+    if ($modifier eq 'TABLE') {
+        return { TABLE => $value } if ref $value eq 'ARRAY';
+        return { TABLE => [$value] };
+    } elsif ($modifier eq 'ARRAY') {
+        return $value if ref $value eq 'ARRAY';
+        return [$value];
+    }
+    $self->parser->throw_error("Modifying operator '$modifier' not supported") unless $method;
+}
+
 sub got_modifier_variable {
     my ($self, $list) = @_;
     my ($modifier, $varname);
@@ -517,7 +640,7 @@ sub got_modifier_variable {
     $modifier = shift @$list;
     $varname = shift @$list;
     $modifier = uc $modifier;
-    my $method = $self->pic->validate_modifier($modifier);
+    my $method = $self->pic->validate_modifier_operator($modifier);
     $self->parser->throw_error("Modifying operator '$modifier' not supported") unless $method;
     return $self->got_expr_value(["MOP::${modifier}::${varname}"]);
 }
@@ -537,7 +660,7 @@ sub got_validated_variable {
 
 sub got_variable {
     my ($self, $list) = @_;
-    $self->flatten($list);
+    $self->flatten($list) if ref $list eq 'ARRAY';
     my $varname = shift @$list;
     my ($current, $parent) = $self->stack;
     # if the variable is used from the uc-config grammar rule
@@ -549,6 +672,8 @@ sub got_variable {
         name => uc $varname,
         scope => $self->ast->{block_stack}->[-1],
         size => POSIX::ceil($self->pic->address_bits($varname) / 8),
+        type => 'byte',
+        data => undef,
     } unless exists $self->ast->{variables}->{$varname};
     $self->ast->{variables}->{$varname}->{scope} = 'global' if $parent =~ /assert_/;
     return $varname;
@@ -633,6 +758,7 @@ sub got_assert_statement {
     $self->flatten($list) if ref $list eq 'ARRAY';
     my ($method, $cond, $msg) = @$list;
     $msg = '' unless defined $msg;
+    $self->ast->{asserts}++;
     $self->update_intermediate("SIM::${method}::${cond}::${msg}");
     return;
 }
@@ -644,8 +770,14 @@ sub generate_simulator_instruction {
     my $method = shift @ins;
     my @code = ();
     push @code, "\t;; $line" if $self->intermediate_inline;
+    foreach (@ins) {
+        next unless /HASH|ARRAY/;
+        next unless exists $self->global_collections->{$_};
+        $_ = $self->global_collections->{$_};
+    }
+    return @code if $self->simulator->disable;
     my $code = $self->simulator->$method(@ins);
-    return $self->parser->throw_error("Error in intermediate code '$line'") unless $code;
+    return $self->parser->throw_error("Error in simulator intermediate code '$line'") unless $code;
     push @code, $code if $code;
     return @code;
 }
@@ -655,9 +787,14 @@ sub generate_code_instruction {
     my @ins = split /::/, $line;
     my $tag = shift @ins;
     my $method = shift @ins;
+    my @code = ();
+    foreach (@ins) {
+        next unless /HASH|ARRAY/;
+        next unless exists $self->global_collections->{$_};
+        $_ = $self->global_collections->{$_};
+    }
     my ($code, $funcs, $macros) = $self->pic->$method(@ins);
     return $self->parser->throw_error("Error in intermediate code '$line'") unless $code;
-    my @code = ();
     push @code, "\t;; $line" if $self->intermediate_inline;
     push @code, $code if $code;
     $self->_update_funcs($funcs, $macros) if ($funcs or $macros);
@@ -697,6 +834,12 @@ sub generate_code_operations {
         $var1 = shift @args;
         $op = shift @args;
         $var2 = shift @args;
+    } elsif (scalar @args == 4) {
+        $var1 = shift @args;
+        $op = shift @args;
+        $var2 = shift @args;
+        my $var3 = shift @args;
+        $extra{SIZE} = $var3;
     } else {
         return $self->parser->throw_error("Error in intermediate code '$line'");
     }
@@ -709,8 +852,9 @@ sub generate_code_operations {
         }
     }
     my $method = $self->pic->validate_operator($op) if $tag eq 'OP';
-    $method = $self->pic->validate_modifier($op) if $tag eq 'MOP';
-    $self->parser->throw_error("Invalid operator '$op' in intermediate code") unless $self->pic->can($method);
+    $method = $self->pic->validate_modifier_operator($op) if $tag eq 'MOP';
+    $self->parser->throw_error("Invalid operator '$op' in intermediate code") unless
+        ($method and $self->pic->can($method));
     push @code, "\t;; $line" if $self->intermediate_inline;
     my ($code, $funcs, $macros) = $self->pic->$method($var1, $var2, %extra);
     return $self->parser->throw_error("Error in intermediate code '$line'") unless $code;
@@ -725,14 +869,15 @@ sub find_tmpvar_dependencies {
     my ($tag, @args) = split /::/, $tcode;
     return unless $tag eq 'OP';
     my @deps = ();
-    if (scalar @args == 2) {
+    my $sz = scalar @args;
+    if ($sz == 2) {
         my ($op, $var) = @args;
         if (exists $self->ast->{tmp_variables}->{$var}) {
             push @deps, $var;
             my @rdeps = $self->find_tmpvar_dependencies($var);
             push @deps, @rdeps if @rdeps;
         }
-    } elsif (scalar @args == 3) {
+    } elsif ($sz == 3 or $sz == 4) {
         my ($var1, $op, $var2) = @args;
         if (exists $self->ast->{tmp_variables}->{$var1}) {
             push @deps, $var1;
@@ -756,12 +901,13 @@ sub find_var_dependencies {
     my ($tag, @args) = split /::/, $tcode;
     return unless $tag eq 'OP';
     my @deps = ();
-    if (scalar @args == 2) {
+    my $sz = scalar @args;
+    if ($sz == 2) {
         my ($op, $var) = @args;
         if (exists $self->ast->{variables}->{$var}) {
             push @deps, $var;
         }
-    } elsif (scalar @args == 3) {
+    } elsif ($sz == 3 or $sz == 4) {
         my ($var1, $op, $var2) = @args;
         if (exists $self->ast->{variables}->{$var1}) {
             push @deps, $var1;
@@ -788,6 +934,7 @@ sub generate_code_assign_expr {
     my @code = ();
     my $ast = $self->ast;
     my ($tag, $op, $varname, $rhs) = split /::/, $line;
+    push @code, ";;; $line\n";
     if (exists $ast->{variables}->{$varname}) {
         if (exists $ast->{tmp_variables}->{$rhs}) {
             my $tmp_code = $ast->{tmp_variables}->{$rhs};
@@ -842,7 +989,8 @@ sub generate_code_assign_expr {
             $self->_update_funcs($funcs, $macros) if ($funcs or $macros);
         }
     } else {
-        return $self->parser->throw_error("Error in intermediate code '$line'");
+        return $self->parser->throw_error(
+            "Error in intermediate code '$line': $varname doesn't exist");
     }
     return @code;
 }
@@ -1099,21 +1247,51 @@ sub final {
     my $vhref = $ast->{variables};
     $variables .= "GLOBAL_VAR_UDATA udata\n" if keys %$vhref;
     my @global_vars = ();
+    my @tables = ();
+    my @init_vars = ();
     foreach my $var (sort(keys %$vhref)) {
-        # should we care about scope ?
-        $variables .= "$vhref->{$var}->{name} res $vhref->{$var}->{size}\n";
-        if (($vhref->{$var}->{scope} eq 'global') or
-            ($ast->{code_config}->{variable}->{export})) {
-            push @global_vars, $vhref->{$var}->{name};
+        my $name = $vhref->{$var}->{name};
+        my $typ = $vhref->{$var}->{type} || 'byte';
+        my $data = $vhref->{$var}->{data};
+        my $label = $vhref->{$var}->{label} || $name;
+        my $szvar = $vhref->{$var}->{size};
+        if ($typ eq 'string') {
+            ##TODO: this may need to be stored in a different location
+            $data = '' unless defined $data;
+            ## different PICs may have different string handling
+            push @init_vars, $self->pic->store_string($data, $label,
+                            length($data), $szvar);
+        } elsif ($typ eq 'ARRAY') {
+            $data = [] unless defined $data;
+            push @init_vars, $self->pic->store_array($data, $label,
+                                scalar(@$data), $szvar);
+        } elsif ($typ eq 'HASH') {
+            $data = {} unless defined $data;
+            next unless defined $data->{TABLE};
+            my $table = $data->{TABLE};
+            my ($code, $szdecl) = $self->pic->store_table($table, $label,
+                        scalar(@$table), $szvar);
+            push @tables, $code;
+            push @init_vars, $szdecl if $szdecl;
+        } else {# $typ == 'byte' or any other
+            # should we care about scope ?
+            $variables .= "$name res $vhref->{$var}->{size}\n";
+            if (($vhref->{$var}->{scope} eq 'global') or
+                ($ast->{code_config}->{variable}->{export})) {
+                push @global_vars, $name;
+            }
         }
     }
     if ($ast->{tmp_stack_size}) {
         $variables .= "VIC_STACK res $ast->{tmp_stack_size}\t;; temporary stack\n";
     }
-    #XXX $ast->{code_config}->{variable};
     if (scalar @global_vars) {
         # export the variables
         $variables .= "\tglobal ". join (", ", @global_vars) . "\n";
+    }
+    if (scalar @init_vars) {
+        $variables .= "\nGLOBAL_VAR_IDATA idata\n"; # initialized variables
+        $variables .= join("\n", @init_vars);
     }
     my $macros = '';
     foreach my $mac (sort(keys %{$ast->{macros}})) {
@@ -1124,8 +1302,6 @@ sub final {
     my $isr_checks = '';
     my $isr_code = '';
     my $funcs = '';
-#    YYY $ast->{tmp_variables};
-#    YYY $ast->{block_mapping};
     foreach my $fn (sort(keys %{$ast->{funcs}})) {
         my $fn_val = $ast->{funcs}->{$fn};
         # the default ISR checks to be done first
@@ -1152,6 +1328,7 @@ sub final {
             $funcs .= "\n";
         }
     }
+    $funcs .= join ("\n", @tables) if scalar @tables;
     if (length $isr_code) {
         my $isr_entry = $self->pic->isr_entry;
         my $isr_exit = $self->pic->isr_exit;
@@ -1161,13 +1338,20 @@ sub final {
         $variables .= "\n$isr_var\n";
     }
     my ($sim_include, $sim_setup_code) = ('', '');
-    if (defined $self->simulator and defined $ast->{Simulator}) {
+    # we need to generate simulator code if either the Simulator block is
+    # present or if any asserts are present
+    if ($self->simulator and not $self->simulator->disable and
+        ($ast->{Simulator} or $ast->{asserts})) {
         my $stype = $self->simulator->type;
         $sim_include .= ";;;; generated code for $stype header file\n";
         $sim_include .= '#include <' . $self->simulator->include .">\n";
         my @setup_code = $self->generate_code($ast, 'Simulator');
         my $init_code = $self->simulator->init_code;
-        $sim_setup_code .= join("\n", $init_code, @setup_code) if scalar @setup_code;
+        $sim_setup_code .= $init_code . "\n" if defined $init_code;
+        $sim_setup_code .= join("\n", @setup_code) if scalar @setup_code;
+        if ($self->simulator->should_autorun) {
+            $sim_setup_code .= $self->simulator->get_autorun_code;
+        }
     }
     my $pic = <<"...";
 ;;;; generated code for PIC header file

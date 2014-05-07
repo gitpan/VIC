@@ -6,7 +6,7 @@ use Carp;
 use POSIX ();
 use Pegex::Base; # use this instead of Mo
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 $VERSION = eval $VERSION;
 
 has type => 'p16f690';
@@ -14,6 +14,8 @@ has type => 'p16f690';
 has include => 'p16f690.inc';
 
 has org => 0;
+
+has frequency => 4e6; # 4MHz
 
 has address_range => [ 0x0000, 0x0FFF ]; # 4K
 
@@ -502,12 +504,13 @@ sub validate_operator {
             LE | GE | GT | LT | EQ | NE |
             ADD | SUB | MUL | DIV | MOD |
             BXOR | BOR | BAND | AND | OR | SHL | SHR |
-            ASSIGN | INC | DEC | NOT | COMP
+            ASSIGN | INC | DEC | NOT | COMP |
+            TBLIDX | ARRIDX | STRIDX
         /x;
     return $vop;
 }
 
-sub validate_modifier {
+sub validate_modifier_operator {
     my ($self, $mod, $suffix) = @_;
     my $vmod = "op_$mod" if $mod =~ /^
             SQRT | HIGH | LOW
@@ -589,13 +592,37 @@ sub write {
 \tcomf PORT$port, 1
 ...
         }
+        if ($self->validate($val)) {
+            # ok we want to write the value of a pin to a port
+            # that doesn't seem right so let's provide a warning
+            if ($self->pins->{$val}) {
+                carp "$val is a pin and you're trying to write a pin to a port" .
+                    " $outp. You can write a pin to a pin or a port to a port only.\n";
+                return;
+            }
+        }
         return $self->op_ASSIGN("PORT$port", $val);
     } elsif (exists $self->pins->{$outp}) {
         my ($port, $portbit) = @{$self->pins->{$outp}};
         if ($val =~ /^\d+$/) {
             return "\tbcf PORT$port, $portbit\n" if "$val" eq '0';
             return "\tbsf PORT$port, $portbit\n" if "$val" eq '1';
-            carp "$val cannot be applied to a pin $outp";
+            carp "$val cannot be applied to a pin $outp\n";
+        } elsif ($self->validate($val)) {
+            # ok we want to short two pins, and this is not bit-banging
+            if ($self->pins->{$val}) {
+                my ($vport, $vportbit) = @{$self->pins->{$val}};
+                return << "...";
+\tbtfsc PORT$port, $outp
+\tbcf PORT$vport, $val
+\tbtfss PORT$port, $outp
+\tbsf PORT$vport, $val
+...
+            } else {
+                carp "$val is a port and cannot be written to a pin $outp. ".
+                    "Only a pin can be written to a pin.\n";
+                return;
+            }
         }
         return $self->op_ASSIGN("PORT$port", $val);
     } elsif ($self->validate($outp)) {
@@ -604,6 +631,7 @@ sub write {
         return $code;
     } else {
         carp "Cannot find $outp in the list of ports or pins";
+        return;
     }
 }
 
@@ -702,7 +730,8 @@ sub digital_input {
         }
         $code = << "...";
 \tbanksel TRIS$port
-\tclrf TRIS$port
+\tmovlw 0xFF
+\tmovwf TRIS$port
 $an_code
 \tbanksel PORT$port
 ...
@@ -717,7 +746,7 @@ $an_code
             }
             $code = << "...";
 \tbanksel TRIS$port
-\tbcf TRIS$port, TRIS$port$portbit
+\tbsf TRIS$port, TRIS$port$portbit
 $an_code
 \tbanksel PORT$port
 ...
@@ -753,17 +782,23 @@ sub m_delay_us {
 m_delay_us macro usecs
     local _delay_usecs_loop_0
     variable usecs_1 = 0
+    variable usecs_2 = 0
 if (usecs > D'6')
-usecs_1 = usecs / D'3'
+usecs_1 = usecs / D'3' - 2
+usecs_2 = usecs % D'3'
     movlw   usecs_1
     movwf   VIC_VAR_DELAY
-_delay_usecs_loop_0:
     decfsz  VIC_VAR_DELAY, F
-    goto    _delay_usecs_loop_0
+    goto    $ - 1
+    while usecs_2 > 0
+        goto $ + 1
+usecs_2--
+    endw
 else
-    while usecs_1 < usecs
+usecs_1 = usecs
+    while usecs_1 > 0
         nop
-usecs_1++
+usecs_1--
     endw
 endif
     endm
@@ -791,9 +826,11 @@ sub m_delay_ms {
 ;; we add 3 instructions for the outer loop
 ;; number of outermost loops = msecs * 1000 / 771 = msecs * 13 / 10
 m_delay_ms macro msecs
-    local _delay_msecs_loop_0, _delay_msecs_loop_1
+    local _delay_msecs_loop_0, _delay_msecs_loop_1, _delay_msecs_loop_2
     variable msecs_1 = 0
-msecs_1 = (msecs * D'13') / D'10'
+    variable msecs_2 = 0
+msecs_1 = (msecs * D'1000') / D'771'
+msecs_2 = ((msecs * D'1000') % D'771') / 3 - 2;; for 3 us per instruction
     movlw   msecs_1
     movwf   VIC_VAR_DELAY + 1
 _delay_msecs_loop_1:
@@ -803,6 +840,15 @@ _delay_msecs_loop_0:
     goto    _delay_msecs_loop_0
     decfsz  VIC_VAR_DELAY + 1, F
     goto    _delay_msecs_loop_1
+if msecs_2 > 0
+    ;; handle the balance
+    movlw msecs_2
+    movwf VIC_VAR_DELAY
+_delay_msecs_loop_2:
+    decfsz VIC_VAR_DELAY, F
+    goto _delay_msecs_loop_2
+    nop
+endif
     endm
 ...
 }
@@ -834,8 +880,15 @@ sub m_delay_s {
 ;; number of outermost loops = seconds * 1000000 / 200000 = seconds * 5
 m_delay_s macro secs
     local _delay_secs_loop_0, _delay_secs_loop_1, _delay_secs_loop_2
+    local _delay_secs_loop_3
     variable secs_1 = 0
-secs_1 = secs * D'1000000' / D'197379'
+    variable secs_2 = 0
+    variable secs_3 = 0
+    variable secs_4 = 0
+secs_1 = (secs * D'1000000') / D'197379'
+secs_2 = ((secs * D'1000000') % D'197379') / 3
+secs_4 = (secs_2 >> 8) & 0xFF - 1
+secs_3 = 0xFE
     movlw   secs_1
     movwf   VIC_VAR_DELAY + 2
 _delay_secs_loop_2:
@@ -849,6 +902,22 @@ _delay_secs_loop_0:
     goto    _delay_secs_loop_1
     decfsz  VIC_VAR_DELAY + 2, F
     goto    _delay_secs_loop_2
+if secs_4 > 0
+    movlw secs_4
+    movwf VIC_VAR_DELAY + 1
+_delay_secs_loop_3:
+    clrf VIC_VAR_DELAY
+    decfsz VIC_VAR_DELAY, F
+    goto $ - 1
+    decfsz VIC_VAR_DELAY + 1, F
+    goto _delay_secs_loop_3
+endif
+if secs_3 > 0
+    movlw secs_3
+    movwf VIC_VAR_DELAY
+    decfsz VIC_VAR_DELAY, F
+    goto $ - 1
+endif
     endm
 ...
 }
@@ -919,7 +988,13 @@ sub delay {
     my $us = $t - $sec * 1e6 - $ms * 1000;
     my $code = '';
     my $funcs = {};
-    my $macros = { m_delay_var => $self->m_delay_var };
+    # return all as part of the code always
+    my $macros = {
+        m_delay_var => $self->m_delay_var,
+        m_delay_s => $self->m_delay_s,
+        m_delay_ms => $self->m_delay_ms,
+        m_delay_us => $self->m_delay_us,
+    };
     ## more than one function could be called so have them separate
     if ($sec > 0) {
         my $fn = "_delay_${sec}s";
@@ -928,7 +1003,6 @@ sub delay {
 \tm_delay_s D'$sec'
 \treturn
 ....
-        $macros->{m_delay_s} = $self->m_delay_s;
     }
     if ($ms > 0) {
         my $fn = "_delay_${ms}ms";
@@ -937,16 +1011,19 @@ sub delay {
 \tm_delay_ms D'$ms'
 \treturn
 ....
-        $macros->{m_delay_ms} = $self->m_delay_ms;
     }
     if ($us > 0) {
-        my $fn = "_delay_${us}us";
-        $code .= "\tcall $fn\n";
-        $funcs->{$fn} = <<"....";
+        # for less than 6 us we just inline the code
+        if ($us <= 6) {
+            $code .= "\tm_delay_us D'$us'\n";
+        } else {
+            my $fn = "_delay_${us}us";
+            $code .= "\tcall $fn\n";
+            $funcs->{$fn} = <<"....";
 \tm_delay_us D'$us'
 \treturn
 ....
-        $macros->{m_delay_us} = $self->m_delay_us;
+        }
     }
     return wantarray ? ($code, $funcs, $macros) : $code;
 }
@@ -959,7 +1036,12 @@ sub op_SHL {
         $var = uc $var;
         $code .= "\t;;;; perform $var << $bits\n";
         if ($bits == 1) {
-            $code .= "\trlf $var, W\n";
+            $code .= << "...";
+\tbcf STATUS, C
+\trlf $var, W
+\tbtfsc STATUS, C
+\tbcf $var, 0
+...
         } elsif ($bits == 0) {
             $code .= "\tmovf $var, W\n";
         } else {
@@ -986,7 +1068,12 @@ sub op_SHR {
         $var = uc $var;
         $code .= "\t;;;; perform $var >> $bits\n";
         if ($bits == 1) {
-            $code .= "\trrf $var, W\n";
+            $code .= << "...";
+\tbcf STATUS, C
+\trrf $var, W
+\tbtfsc STATUS, C
+\tbcf $var, 7
+...
         } elsif ($bits == 0) {
             $code .= "\tmovf $var, W\n";
         } else {
@@ -2602,6 +2689,73 @@ $action{END}:
 
 sub break { return 'BREAK'; }
 sub continue { return 'CONTINUE'; }
+
+sub store_string {
+    my ($self, $str, $strvar, $len, $lenvar) = @_;
+    $len = sprintf "0x%02X", $len;
+    return << "...";
+$strvar data "$str" ; $strvar is a string
+$lenvar equ $len ; $lenvar is length of $strvar
+...
+}
+
+sub store_array {
+    my ($self, $arr, $arrvar, $sz, $szvar) = @_;
+    # use db in 16-bit MCUs for 8-bit values
+    # arrays are read-write objects
+    my $arrstr = join (",", @$arr) if scalar @$arr;
+    $arrstr = '0' unless $arrstr;
+    $sz = sprintf "0x%02X", $sz;
+    return << "..."
+$arrvar db $arr ; array stored as accessible bytes
+$szvar equ $sz   ; length of array $arrvar is a constant
+...
+}
+
+sub store_table {
+    my ($self, $table, $label, $tblsz, $tblszvar) = @_;
+    my $code = "$label:\n";
+    $code .= "\taddwf PCL, F\n";
+    if (scalar @$table) {
+        foreach (@$table) {
+            my $d = sprintf "0x%02X", $_;
+            $code .= "\tdt $d\n";
+        }
+    } else {
+        # table is empty
+        $code .= "\tdt 0\n";
+    }
+    $tblsz = sprintf "0x%02X", $tblsz;
+    my $szdecl = "$tblszvar equ $tblsz ; size of table at $label\n";
+    return wantarray ? ($code, $szdecl) : $code;
+}
+
+sub op_TBLIDX {
+    my ($self, $table, $idx, %extra) = @_;
+    return unless defined $extra{RESULT};
+    my $sz = $extra{SIZE};
+    $idx = uc $idx;
+    $sz = uc $sz if $sz;
+    my $szcode = '';
+    # check bounds
+    $szcode = "\tandlw $sz - 1" if $sz;
+    return << "..."
+\tmovwf $idx
+$szcode
+\tcall $table
+\tmovwf $extra{RESULT}
+...
+}
+
+sub op_ARRIDX {
+    my ($self, $array, $idx, %extra) = @_;
+    XXX { array => $array, index => $idx, %extra };
+}
+
+sub op_STRIDX {
+    my ($self, $string, $idx, %extra) = @_;
+    XXX { string => $string, index => $idx, %extra };
+}
 
 1;
 

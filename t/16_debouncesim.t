@@ -4,45 +4,52 @@ use t::TestVIC tests => 1, debug => 0;
 my $input = <<'...';
 PIC P16F690;
 
-pragma debounce count = 2;
+pragma debounce count = 5;
 pragma debounce delay = 1ms;
-pragma adc right_justify = 0;
 
 Main {
     digital_output PORTC;
-    analog_input RA0;
     digital_input RA3;
-    adc_enable 500kHz, AN0;
-    $display = 0x08; # create a 8-bit register
-    $dirxn = FALSE;
-    timer_enable TMR0, 256, ISR {#set the interrupt service routine
-        adc_read $userval;
-        $userval += 100;
-    };
+    $display = 0;
     Loop {
-        write PORTC, $display;
-        delay_ms $userval;
-        debounce RA3, Action {
-            $dirxn = !$dirxn;
-        };
-        if ($dirxn == TRUE) {
-            rol $display, 1;
-        } else {
-            ror $display, 1;
+        # test breaking of arguments over multiple lines
+        debounce RA3,
+        Action {
+            ++$display;
+            write PORTC, $display;
         };
     }
 }
+
+Simulator {
+    attach_led PORTC, 4, 'red';
+    logfile "debouncer.lxt";
+    log RA3;
+    scope RA3;
+    # stimulus should reflect the debounce delay to be viable
+    stimulate RA3, every 5s, wave [
+        300, 1, 1300, 0,
+        1400, 1, 2400, 0,
+        2500, 1, 3500, 0,
+        3600, 1, 4600, 0,
+        4700, 1, 5700, 0,
+        5800, 1, 6800, 0,
+        6900, 1, 8000, 0
+    ];
+    stop_after 30s;
+    autorun;
+}
 ...
 
-my $output = << '...';
+my $output = <<'...';
 ;;;; generated code for PIC header file
 #include <p16f690.inc>
+;;;; generated code for gpsim header file
+#include <coff.inc>
 
 ;;;; generated code for variables
 GLOBAL_VAR_UDATA udata
-DIRXN res 1
 DISPLAY res 1
-USERVAL res 1
 
 ;;;;;; VIC_VAR_DEBOUNCE VARIABLES ;;;;;;;
 
@@ -60,11 +67,6 @@ VIC_VAR_DELAY_UDATA udata
 VIC_VAR_DELAY   res 3
 
 
-
-cblock 0x70 ;; unbanked RAM
-ISR_STATUS
-ISR_W
-endc
 
 
 ;;;; generated code for macros
@@ -178,74 +180,69 @@ usecs_1--
 endif
     endm
 
-m_delay_wms macro
-    local _delayw_msecs_loop_0, _delayw_msecs_loop_1
-    movwf   VIC_VAR_DELAY + 1
-_delayw_msecs_loop_1:
-    clrf   VIC_VAR_DELAY   ;; set to 0 which gets decremented to 0xFF
-_delayw_msecs_loop_0:
-    decfsz  VIC_VAR_DELAY, F
-    goto    _delayw_msecs_loop_0
-    decfsz  VIC_VAR_DELAY + 1, F
-    goto    _delayw_msecs_loop_1
-    endm
-
-
-
 	__config (_INTRC_OSC_NOCLKOUT & _WDT_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _BOR_OFF & _IESO_OFF & _FCMEN_OFF)
 
 
 
 	org 0
 
-	goto _start
-	nop
-	nop
-	nop
+;;;; generated common code for the Simulator
+	.sim "module library libgpsim_modules"
+	.sim "p16f690.xpos = 200"
+	.sim "p16f690.ypos = 200"
+	.sim "p16f690.frequency = 4000000"
 
-	org 4
-ISR:
-_isr_entry:
-	movwf ISR_W
-	movf STATUS, W
-	movwf ISR_STATUS
+;;;; generated code for Simulator
+	.sim "module load led L0"
+	.sim "L0.xpos = 100"
+	.sim "L0.ypos = 50"
+	.sim "L0.color = red"
+	.sim "node portc0led"
+	.sim "attach portc0led portc0 L0.in"
+	.sim "module load led L1"
+	.sim "L1.xpos = 100"
+	.sim "L1.ypos = 100"
+	.sim "L1.color = red"
+	.sim "node portc1led"
+	.sim "attach portc1led portc1 L1.in"
+	.sim "module load led L2"
+	.sim "L2.xpos = 100"
+	.sim "L2.ypos = 150"
+	.sim "L2.color = red"
+	.sim "node portc2led"
+	.sim "attach portc2led portc2 L2.in"
+	.sim "module load led L3"
+	.sim "L3.xpos = 100"
+	.sim "L3.ypos = 200"
+	.sim "L3.color = red"
+	.sim "node portc3led"
+	.sim "attach portc3led portc3 L3.in"
 
-_isr_timer:
-	btfss INTCON, T0IF
-	goto _end_isr_1
-	bcf   INTCON, T0IF
-	goto _isr_1
-_end_isr_1:
+	.sim "log lxt debouncer.lxt"
 
-	goto _isr_exit
+	.sim "log r porta"
+	.sim "log w porta"
 
-;;;; generated code for ISR
-_isr_1:
+	.sim "scope.ch0 = \"porta3\""
 
-	;;;delay 5us
-	nop
-	nop
-	nop
-	nop
-	nop
-	bsf ADCON0, GO
-	btfss ADCON0, GO
-	goto $ - 1
-	movf ADRESH, W
-	movwf USERVAL
+	.sim "echo creating stimulus number 0"
+	.sim "stimulus asynchronous_stimulus"
+	.sim "initial_state 0"
+	.sim "start_cycle 0"
+	.sim "digital"
+	.sim "period 5000000"
+	.sim "{ 300,1,1300,0,1400,1,2400,0,2500,1,3500,0,3600,1,4600,0,4700,1,5700,0,5800,1,6800,0,6900,1,8000,0 }"
+	.sim "name stim0"
+	.sim "end"
+	.sim "echo done creating stimulus number 0"
+	.sim "node stim0RA3"
+	.sim "attach stim0RA3 stim0 porta3"
 
-	;;moves 100 to W
-	movlw 0x64
-	addwf USERVAL, F
+	.sim "break c 300000000"
 
-	goto _end_isr_1;; go back to end of conditional
+	;;;; will autorun on start
+	.sim "run"
 
-_isr_exit:
-	movf ISR_STATUS, W
-	movwf STATUS
-	swapf ISR_W, F
-	swapf ISR_W, W
-	retfie
 
 
 
@@ -254,65 +251,28 @@ _start:
 
 	banksel TRISC
 	clrf TRISC
-    banksel ANSEL
-    movlw 0x0F
-    andwf ANSEL, F
-    banksel ANSELH
-    movlw 0xFC
-    andwf ANSELH, F
+	banksel ANSEL
+	movlw 0x0F
+	andwf ANSEL, F
+	banksel ANSELH
+	movlw 0xFC
+	andwf ANSELH, F
+
 	banksel PORTC
 	clrf PORTC
 
 	banksel TRISA
-	bsf TRISA, TRISA0
-	banksel ANSEL
-    bsf ANSEL, ANS0
-	banksel PORTA
-
-	banksel TRISA
 	bsf TRISA, TRISA3
+
 	banksel PORTA
 
-	banksel ADCON1
-	movlw B'00000000'
-	movwf ADCON1
-	banksel ADCON0
-	movlw B'00000001'
-	movwf ADCON0
+;;; SET::ASSIGN::display::0
 
-	;; moves 8 to DISPLAY
-	movlw 0x08
-	movwf DISPLAY
-
-	clrf DIRXN
-
-;; timer prescaling
-	banksel OPTION_REG
-	clrw
-	iorlw B'00000111'
-	movwf OPTION_REG
-
-;; enable interrupt servicing
-	banksel INTCON
-	clrf INTCON
-	bsf INTCON, GIE
-	bsf INTCON, T0IE
-
-
-;; clear the timer
-	banksel TMR0
-	clrf TMR0
-
+	;; moves 0 (0x00) to DISPLAY
+	clrf DISPLAY
 
 ;;;; generated code for Loop1
-_loop_2:
-
-	;; moves DISPLAY to PORTC
-	movf  DISPLAY, W
-	movwf PORTC
-
-	movf USERVAL, W
-	call _delay_wms
+_loop_1:
 
 	;;; generate code for debounce A<3>
 	call _delay_1ms
@@ -338,77 +298,46 @@ _debounce_state_up:
 
 _debounce_state_check:
 	movf    VIC_VAR_DEBOUNCECOUNTER, W
-	xorlw   0x02
-	;; is counter == 2 ?
+	xorlw   0x05
+	;; is counter == 0x05 ?
 	btfss   STATUS, Z
-	goto    _end_action_3
-	;; after 2 straight, flip direction
+	goto    _end_action_2
+	;; after 0x05 straight, flip direction
 	comf    VIC_VAR_DEBOUNCESTATE, 1
 	clrf    VIC_VAR_DEBOUNCECOUNTER
 	;; was it a key-down
 	btfss   VIC_VAR_DEBOUNCESTATE, 0
-	goto    _end_action_3
-	goto    _action_3
-_end_action_3:
-
-_start_conditional_0:
-    bcf STATUS, Z
-	movf DIRXN, W
-	xorlw 0x01
-	btfss STATUS, Z ;; DIRXN == 1 ?
-	goto _false_5
-	goto _true_4
-_end_conditional_0:
+	goto    _end_action_2
+	goto    _action_2
+_end_action_2:
 
 
-	goto _loop_2
-_end_loop_2:
+	goto _loop_1 ;;;; end of _loop_1
+
+_end_loop_1:
+
 _end_start:
-    goto $
+
+	goto $	;;;; end of Main
 
 ;;;; generated code for functions
 ;;;; generated code for Action2
-_action_3:
+_action_2:
 
-	;; clrw -- leftover from old code
+	;; increments DISPLAY in place
+	;; increment byte[0]
+	incf DISPLAY, F
 
-;; generate code for !DIRXN
-	comf DIRXN, W
-	btfsc STATUS, Z
-	movlw 1
+	;; moving DISPLAY to PORTC
+	movf DISPLAY, W
+	movwf PORTC
 
-	movwf DIRXN
+	goto _end_action_2 ;; go back to end of block
 
-	goto _end_action_3;; go back to end of conditional
-
+;;;; end of _action_2
 _delay_1ms:
 	m_delay_ms D'1'
 	return
-
-_delay_wms:
-	m_delay_wms
-	return
-
-;;;; generated code for False2
-_false_5:
-
-	bcf STATUS, C
-	rrf DISPLAY, 1
-	btfsc STATUS, C
-	bsf DISPLAY, 7
-
-	goto _end_conditional_0;; go back to end of conditional
-
-;;;; generated code for True2
-_true_4:
-
-	bcf STATUS, C
-	rlf DISPLAY, 1
-	btfsc STATUS, C
-	bsf DISPLAY, 0
-
-	goto _end_conditional_0;; go back to end of conditional
-
 
 
 ;;;; generated code for end-of-file

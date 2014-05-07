@@ -9,39 +9,70 @@ pragma variable export;
 
 Main {
     $var1 = 12345;
+    sim_assert $var1 == 57, "12345 was placed as 57 due to 8-bit mode";
     $var2 = 113;
     $var3 = $var2 + $var1;
+    sim_assert $var3 == 170, "57 + 113 = 170";
     $var3 = $var2 - $var1;
+    sim_assert $var3 == 56, "113 - 57 = 56";
     $var3 = $var2 * $var1;
+    sim_assert $var3 == 41, "113 * 57 = 41";
     $var2 = $var2 * 5;
+    sim_assert $var2 == 53, "113 * 5 = 565 => 53 in 8-bit mode";
     $var3 = $var2 / $var1;
+    sim_assert $var3 == 0, "53 / 57 = 0 in integer mathematics";
     $var3 = $var2 % $var1;
+    sim_assert $var3 == 53, "53 % 57 = 53";
     --$var3;
+    sim_assert $var3 == 52, "--53 = 52";
     ++$var3;
+    sim_assert $var3 == 53, "++52 = 53";
     $var4 = 64;
     $var4 -= $var1;
+    sim_assert $var4 == 7, "64 - 57 = 7";
     $var3 *= 3;
+    sim_assert $var3 == 159, "53 * 3 = 159";
     $var2 /= 5;
+    sim_assert $var2 == 10, "53 / 5 = 10";
     $var4 %= $var2;
+    sim_assert $var4 == 7, "7 % 10 = 7";
     $var4 = 64;
     $var4 ^= 0xFF;
+    sim_assert $var4 == 0xBF, "64 ^ 0xFF = 0xBF";
     $var4 |= 0x80;
+    sim_assert $var4 == 0xBF, "0xBF | 0x80 = 0xBF";
     $var4 &= 0xAA;
+    sim_assert $var4 == 0xAA, "0xBF & 0xAA = 0xAA";
     $var4 = $var4 << 1;
+    sim_assert $var4 == 84, "0xAA << 1 = 340 which is 84 in 8-bit mode";
     $var4 = $var4 >> 1;
+    sim_assert $var4 == 42, "84 >> 1 = 42";
     $var4 <<= 1;
+    sim_assert $var4 == 84, "42 << 1 = 84";
     $var4 >>= 1;
+    sim_assert $var4 == 42, "84 >> 1 = 42";
     $var5 = $var1 - $var2 + $var3 * ($var4 + 8) / $var1;
+    sim_assert $var5 == 47, "57 - 10 + ((159 * (42 + 8)) & 0xFF) / 57";
+    $var7 = 13;
     $var5 = ($var1 + (($var3 * ($var4 + $var7) + 5) + $var2));
+    sim_assert $var5 == 113,
+        "57 + (((159 * (42 + 13)) & 0xFF + 5) + 10) = 113";
+    $var6 = 19;
     $var8 = ($var1 + $var2) - ($var3 * $var4) / ($var5 % $var6);
+    sim_assert $var8 == 66, "(57 + 10) - ((159 * 42) & 0xFF) / (113 % 19)";
     # sqrt is a modifier
     $var3 = sqrt $var4;
+    sim_assert $var3 == 6,
+        "sqrt(42) = 6.4807 which is 6 in integer mathematics";
+    sim_assert "*** Completed the simulation ***";
 }
 ...
 
-my $output = << '...';
+my $output = <<'...';
 ;;;; generated code for PIC header file
 #include <p16f690.inc>
+;;;; generated code for gpsim header file
+#include <coff.inc>
 
 ;;;; generated code for variables
 GLOBAL_VAR_UDATA udata
@@ -292,6 +323,14 @@ m_sqrt_16bit macro v1
 
 	org 0
 
+;;;; generated common code for the Simulator
+	.sim "module library libgpsim_modules"
+	.sim "p16f690.xpos = 200"
+	.sim "p16f690.ypos = 200"
+	.sim "p16f690.frequency = 4000000"
+
+
+
 
 
 ;;;; generated code for Main
@@ -302,6 +341,10 @@ _start:
 	movlw 0x39
 	movwf VAR1
 
+	;; break if the condition evaluates to false
+	.assert "VAR1 == 0x39, \"12345 was placed as 57 due to 8-bit mode\""
+	nop ;; needed for the assert
+
 	;; moves 113 (0x71) to VAR2
 	movlw 0x71
 	movwf VAR2
@@ -309,42 +352,68 @@ _start:
 	;; add VAR2 and VAR1 without affecting either
 	movf VAR2, W
 	addwf VAR1, W
-
 	movwf VAR3
+
+	;; break if the condition evaluates to false
+	.assert "VAR3 == 0xAA, \"57 + 113 = 170\""
+	nop ;; needed for the assert
 
 	;; perform VAR2 - VAR1 without affecting either
 	movf VAR1, W
 	subwf VAR2, W
-
 	movwf VAR3
+
+	;; break if the condition evaluates to false
+	.assert "VAR3 == 0x38, \"113 - 57 = 56\""
+	nop ;; needed for the assert
 
 	;; perform VAR2 * VAR1 without affecting either
 	m_multiply_2 VAR2, VAR1
-
 	movwf VAR3
+
+	;; break if the condition evaluates to false
+	.assert "VAR3 == 0x29, \"113 * 57 = 41\""
+	nop ;; needed for the assert
 
 	;; perform VAR2 * 0x05 without affecting VAR2
 	m_multiply_1 VAR2, 0x05
-
 	movwf VAR2
+
+	;; break if the condition evaluates to false
+	.assert "VAR2 == 0x35, \"113 * 5 = 565 => 53 in 8-bit mode\""
+	nop ;; needed for the assert
 
 	;; perform VAR2 / VAR1 without affecting either
 	m_divide_2 VAR2, VAR1
-
 	movwf VAR3
+
+	;; break if the condition evaluates to false
+	.assert "VAR3 == 0x00, \"53 / 57 = 0 in integer mathematics\""
+	nop ;; needed for the assert
 
 	;; perform VAR2 / VAR1 without affecting either
 	m_mod_2 VAR2, VAR1
-
 	movwf VAR3
+
+	;; break if the condition evaluates to false
+	.assert "VAR3 == 0x35, \"53 % 57 = 53\""
+	nop ;; needed for the assert
 
 	;; decrements VAR3 in place
 	;; decrement byte[0]
 	decf VAR3, F
 
+	;; break if the condition evaluates to false
+	.assert "VAR3 == 0x34, \"--53 = 52\""
+	nop ;; needed for the assert
+
 	;; increments VAR3 in place
 	;; increment byte[0]
 	incf VAR3, F
+
+	;; break if the condition evaluates to false
+	.assert "VAR3 == 0x35, \"++52 = 53\""
+	nop ;; needed for the assert
 
 	;; moves 64 (0x40) to VAR4
 	movlw 0x40
@@ -355,17 +424,33 @@ _start:
 	subwf VAR4, W
 	movwf VAR4
 
+	;; break if the condition evaluates to false
+	.assert "VAR4 == 0x07, \"64 - 57 = 7\""
+	nop ;; needed for the assert
+
 	;; perform VAR3 * 0x03 without affecting VAR3
 	m_multiply_1 VAR3, 0x03
 	movwf VAR3
+
+	;; break if the condition evaluates to false
+	.assert "VAR3 == 0x9F, \"53 * 3 = 159\""
+	nop ;; needed for the assert
 
 	;; perform VAR2 / 0x05 without affecting VAR2
 	m_divide_1b VAR2, 0x05
 	movwf VAR2
 
+	;; break if the condition evaluates to false
+	.assert "VAR2 == 0x0A, \"53 / 5 = 10\""
+	nop ;; needed for the assert
+
 	;; perform VAR4 / VAR2 without affecting either
 	m_mod_2 VAR4, VAR2
 	movwf VAR4
+
+	;; break if the condition evaluates to false
+	.assert "VAR4 == 0x07, \"7 % 10 = 7\""
+	nop ;; needed for the assert
 
 	;; moves 64 (0x40) to VAR4
 	movlw 0x40
@@ -374,62 +459,93 @@ _start:
 	;; perform VAR4 ^ 0xFF and move into W
 	movlw 0xFF
 	xorwf VAR4, W
+
 	movwf VAR4
+
+	;; break if the condition evaluates to false
+	.assert "VAR4 == 0xBF, \"64 ^ 0xFF = 0xBF\""
+	nop ;; needed for the assert
 
 	;; perform VAR4 | 0x80 and move into W
 	movlw 0x80
 	iorwf VAR4, W
+
 	movwf VAR4
+
+	;; break if the condition evaluates to false
+	.assert "VAR4 == 0xBF, \"0xBF | 0x80 = 0xBF\""
+	nop ;; needed for the assert
 
 	;; perform VAR4 & 0xAA and move into W
 	movlw 0xAA
 	andwf VAR4, W
+
 	movwf VAR4
 
-    bcf STATUS, C
-    rlf VAR4, W
-    btfsc STATUS, C
-    bcf VAR4, 0
-    movwf VAR4
+	;; break if the condition evaluates to false
+	.assert "VAR4 == 0xAA, \"0xBF & 0xAA = 0xAA\""
+	nop ;; needed for the assert
 
-    bcf STATUS, C
-    rrf VAR4, W
-    btfsc STATUS, C
-    bcf VAR4, 7
-    movwf VAR4
+	;;;; perform VAR4 << 1
+	bcf STATUS, C
+	rlf VAR4, W
+	btfsc STATUS, C
+	bcf VAR4, 0
+	movwf VAR4
 
-    bcf STATUS, C
-    rlf VAR4, W
-    btfsc STATUS, C
-    bcf VAR4, 0
-    movwf VAR4
+	;; break if the condition evaluates to false
+	.assert "VAR4 == 0x54, \"0xAA << 1 = 340 which is 84 in 8-bit mode\""
+	nop ;; needed for the assert
 
-    bcf STATUS, C
-    rrf VAR4, W
-    btfsc STATUS, C
-    bcf VAR4, 7
-    movwf VAR4
+	;;;; perform VAR4 >> 1
+	bcf STATUS, C
+	rrf VAR4, W
+	btfsc STATUS, C
+	bcf VAR4, 7
+	movwf VAR4
+
+	;; break if the condition evaluates to false
+	.assert "VAR4 == 0x2A, \"84 >> 1 = 42\""
+	nop ;; needed for the assert
+
+	;;;; perform VAR4 << 1
+	bcf STATUS, C
+	rlf VAR4, W
+	btfsc STATUS, C
+	bcf VAR4, 0
+	movwf VAR4
+
+	;; break if the condition evaluates to false
+	.assert "VAR4 == 0x54, \"42 << 1 = 84\""
+	nop ;; needed for the assert
+
+	;;;; perform VAR4 >> 1
+	bcf STATUS, C
+	rrf VAR4, W
+	btfsc STATUS, C
+	bcf VAR4, 7
+	movwf VAR4
+
+	;; break if the condition evaluates to false
+	.assert "VAR4 == 0x2A, \"84 >> 1 = 42\""
+	nop ;; needed for the assert
 
 	;; add 0x08 and VAR4 without affecting VAR4
 	movf VAR4, W
 	addlw 0x08
-
 	movwf VIC_STACK + 0
 
 	;; perform VAR3 * VIC_STACK + 0 without affecting either
 	m_multiply_2 VAR3, VIC_STACK + 0
-
 	movwf VIC_STACK + 1
 
 	;; perform VIC_STACK + 1 / VAR1 without affecting either
 	m_divide_2 VIC_STACK + 1, VAR1
-
 	movwf VIC_STACK + 2
 
 	;; perform VAR1 - VAR2 without affecting either
 	movf VAR2, W
 	subwf VAR1, W
-
 	movwf VIC_STACK + 3
 
 	;; add VIC_STACK + 3 and VIC_STACK + 2 without affecting either
@@ -437,27 +553,31 @@ _start:
 	addwf VIC_STACK + 2, W
 	movwf VAR5
 
+	;; break if the condition evaluates to false
+	.assert "VAR5 == 0x2F, \"57 - 10 + ((159 * (42 + 8)) & 0xFF) / 57\""
+	nop ;; needed for the assert
+
+	;; moves 13 (0x0D) to VAR7
+	movlw 0x0D
+	movwf VAR7
+
 	;; add VAR4 and VAR7 without affecting either
 	movf VAR4, W
 	addwf VAR7, W
-
 	movwf VIC_STACK + 0
 
 	;; perform VAR3 * VIC_STACK + 0 without affecting either
 	m_multiply_2 VAR3, VIC_STACK + 0
-
 	movwf VIC_STACK + 1
 
 	;; add 0x05 and VIC_STACK + 1 without affecting VIC_STACK + 1
 	movf VIC_STACK + 1, W
 	addlw 0x05
-
 	movwf VIC_STACK + 2
 
 	;; add VIC_STACK + 2 and VAR2 without affecting either
 	movf VIC_STACK + 2, W
 	addwf VAR2, W
-
 	movwf VIC_STACK + 3
 
 	;; add VAR1 and VIC_STACK + 3 without affecting either
@@ -465,25 +585,29 @@ _start:
 	addwf VIC_STACK + 3, W
 	movwf VAR5
 
+	;; break if the condition evaluates to false
+	.assert "VAR5 == 0x71, \"57 + (((159 * (42 + 13)) & 0xFF + 5) + 10) = 113\""
+	nop ;; needed for the assert
+
+	;; moves 19 (0x13) to VAR6
+	movlw 0x13
+	movwf VAR6
+
 	;; add VAR1 and VAR2 without affecting either
 	movf VAR1, W
 	addwf VAR2, W
-
 	movwf VIC_STACK + 0
 
 	;; perform VAR3 * VAR4 without affecting either
 	m_multiply_2 VAR3, VAR4
-
 	movwf VIC_STACK + 1
 
 	;; perform VAR5 / VAR6 without affecting either
 	m_mod_2 VAR5, VAR6
-
 	movwf VIC_STACK + 2
 
 	;; perform VIC_STACK + 1 / VIC_STACK + 2 without affecting either
 	m_divide_2 VIC_STACK + 1, VIC_STACK + 2
-
 	movwf VIC_STACK + 3
 
 	;; perform VIC_STACK + 0 - VIC_STACK + 3 without affecting either
@@ -491,16 +615,27 @@ _start:
 	subwf VIC_STACK + 0, W
 	movwf VAR8
 
+	;; break if the condition evaluates to false
+	.assert "VAR8 == 0x42, \"(57 + 10) - ((159 * 42) & 0xFF) / (113 % 19)\""
+	nop ;; needed for the assert
+
 	;; perform sqrt(VAR4)
 	m_sqrt_8bit VAR4
-
 	movwf VAR3
 
+	;; break if the condition evaluates to false
+	.assert "VAR3 == 0x06, \"sqrt(42) = 6.4807 which is 6 in integer mathematics\""
+	nop ;; needed for the assert
+
+	;; break if the condition evaluates to false
+	.assert "\"*** Completed the simulation ***\""
+	nop ;; needed for the assert
+
 _end_start:
-	goto $
+
+	goto $	;;;; end of Main
 
 ;;;; generated code for functions
-
 
 ;;;; generated code for end-of-file
 	end

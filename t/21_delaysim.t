@@ -4,44 +4,28 @@ use t::TestVIC tests => 1, debug => 0;
 my $input = <<'...';
 PIC P16F690;
 
-pragma debounce count = 5;
-pragma debounce delay = 1ms;
-
 Main {
-    digital_output PORTC;
-    digital_input RA3; # pin 3 is digital
-    $display = 0;
-    Loop {
-        debounce RA3, Action {
-            ++$display;
-            write PORTC, $display;
-        };
-    }
+    delay 1ms;
+    sim_assert "*** EARLY STOP ***";
+}
+
+Simulator {
+    stopwatch 1ms;
 }
 ...
 
 my $output = <<'...';
 ;;;; generated code for PIC header file
 #include <p16f690.inc>
+;;;; generated code for gpsim header file
+#include <coff.inc>
 
 ;;;; generated code for variables
-GLOBAL_VAR_UDATA udata
-DISPLAY res 1
-
-;;;;;; VIC_VAR_DEBOUNCE VARIABLES ;;;;;;;
-
-VIC_VAR_DEBOUNCE_VAR_IDATA idata
-;; initialize state to 1
-VIC_VAR_DEBOUNCESTATE db 0x01
-;; initialize counter to 0
-VIC_VAR_DEBOUNCECOUNTER db 0x00
-
 
 ;;;;;; DELAY FUNCTIONS ;;;;;;;
 
 VIC_VAR_DELAY_UDATA udata
 VIC_VAR_DELAY   res 3
-
 
 
 
@@ -157,92 +141,44 @@ endif
     endm
 
 
+
 	__config (_INTRC_OSC_NOCLKOUT & _WDT_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _BOR_OFF & _IESO_OFF & _FCMEN_OFF)
 
+
+
 	org 0
+
+;;;; generated common code for the Simulator
+	.sim "module library libgpsim_modules"
+	.sim "p16f690.xpos = 200"
+	.sim "p16f690.ypos = 200"
+	.sim "p16f690.frequency = 4000000"
+
+;;;; generated code for Simulator
+	.sim "stopwatch.enable = true"
+	.sim "stopwatch.rollover = 1000"
+	.sim "break stopwatch"
+
+
+
 
 ;;;; generated code for Main
 _start:
 
-	banksel TRISC
-	clrf TRISC
-    banksel ANSEL
-    movlw 0x0F
-    andwf ANSEL, F
-    banksel ANSELH
-    movlw 0xFC
-    andwf ANSELH, F
-	banksel PORTC
-	clrf PORTC
-
-
-	banksel TRISA
-	bsf TRISA, TRISA3
-	banksel PORTA
-
-	clrf DISPLAY
-
-;;;; generated code for Loop1
-_loop_1:
-
-	;;; generate code for debounce A<3>
 	call _delay_1ms
 
-	;; has debounce state changed to down (bit 0 is 0)
-	;; if yes go to debounce-state-down
-	btfsc   VIC_VAR_DEBOUNCESTATE, 0
-	goto    _debounce_state_up
-_debounce_state_down:
-	clrw
-	btfss   PORTA, 3
-	;; increment and move into counter
-	incf    VIC_VAR_DEBOUNCECOUNTER, 0
-	movwf   VIC_VAR_DEBOUNCECOUNTER
-	goto    _debounce_state_check
+	;; break if the condition evaluates to false
+	.assert "\"*** EARLY STOP ***\""
+	nop ;; needed for the assert
 
-_debounce_state_up:
-	clrw
-	btfsc   PORTA, 3
-	incf    VIC_VAR_DEBOUNCECOUNTER, 0
-	movwf   VIC_VAR_DEBOUNCECOUNTER
-	goto    _debounce_state_check
-
-_debounce_state_check:
-	movf    VIC_VAR_DEBOUNCECOUNTER, W
-	xorlw   0x05
-	;; is counter == 5 ?
-	btfss   STATUS, Z
-	goto _end_action_2
-	;; after 5 straight, flip direction
-	comf    VIC_VAR_DEBOUNCESTATE, 1
-	clrf    VIC_VAR_DEBOUNCECOUNTER
-	;; was it a key-down
-	btfss   VIC_VAR_DEBOUNCESTATE, 0
-	goto _end_action_2
-	goto _action_2
-_end_action_2:
-
-	goto _loop_1
-_end_loop_1:
 _end_start:
-    goto $
+
+	goto $	;;;; end of Main
 
 ;;;; generated code for functions
-;;;; generated code for Action2
-_action_2:
-
-	;; increments DISPLAY in place
-	incf DISPLAY, F
-
-	;; moves DISPLAY to PORTC
-	movf  DISPLAY, W
-	movwf PORTC
-	goto _end_action_2 ;; go back
-
 _delay_1ms:
 	m_delay_ms D'1'
 	return
-
 
 
 ;;;; generated code for end-of-file
