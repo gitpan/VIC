@@ -5,7 +5,7 @@ author:
 build_requires:
   File::Spec: 0
   Module::Build: 0
-  Pegex: 0.22
+  Pegex: 0.3
   Test::More: 0
 configure_requires:
   Module::Build: 0
@@ -27,28 +27,28 @@ no_index:
 provides:
   VIC:
     file: lib/VIC.pm
-    version: 0.07
+    version: 0.08
   VIC::Command:
     file: lib/VIC/Command.pm
-    version: 0.07
+    version: 0.08
   VIC::Grammar:
     file: lib/VIC/Grammar.pm
-    version: 0.07
+    version: 0.08
   VIC::PIC::Any:
     file: lib/VIC/PIC/Any.pm
-    version: 0.07
+    version: 0.08
   VIC::PIC::Gpsim:
     file: lib/VIC/PIC/Gpsim.pm
-    version: 0.07
+    version: 0.08
   VIC::PIC::P16F690:
     file: lib/VIC/PIC/P16F690.pm
-    version: 0.07
+    version: 0.08
   VIC::Parser:
     file: lib/VIC/Parser.pm
-    version: 0.07
+    version: 0.08
   VIC::Receiver:
     file: lib/VIC/Receiver.pm
-    version: 0.07
+    version: 0.08
 recommends:
   App::Prove: 0
   XXX: 0
@@ -58,9 +58,9 @@ requires:
   Getopt::Long: 0
   List::MoreUtils: 0
   List::Util: 0
-  Pegex: 0.22
+  Pegex: 0.3
 resources:
   bugtracker: https://github.com/vikasnkumar/vic/issues
   license: http://dev.perl.org/licenses/
   repository: https://github.com/vikasnkumar/vic
-version: 0.07
+version: 0.08
