@@ -2,7 +2,7 @@ package VIC::Grammar;
 use strict;
 use warnings;
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -14,7 +14,7 @@ sub make_tree {
   {
     '+grammar' => 'vic',
     '+toprule' => 'program',
-    '+version' => '0.1.1',
+    '+version' => '0.2.0',
     'COMMA' => {
       '.rgx' => qr/\G,/
     },
@@ -892,7 +892,7 @@ sub make_tree {
       ]
     },
     'units' => {
-      '.rgx' => qr/\G(s|ms|us|kHz|Hz|MHz)/
+      '.rgx' => qr/\G([mu]?s|[kM]?Hz)/
     },
     'validated_variable' => {
       '.ref' => 'identifier_without_keyword'
