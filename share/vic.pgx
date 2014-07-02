@@ -1,15 +1,13 @@
 %grammar vic
-%version 0.2.0
+%version 0.2.1
 #COPYRIGHT: 2014 Vikas N Kumar <vikas@cpan.org>. All Rights Reserved
 
-# uc-select is necessary.
-program: uc-select header* statement* EOS
+# mcu-select is necessary.
+program: mcu-select header* statement* EOS
 
 header: pragmas | comment
-uc-select: /'PIC' BLANK+ ( uc-types ) line-ending/
-
-# P16F690X is fake just to show how to enumerate.
-uc-types: /(?i:'P16F690' |'P16F690X')/
+mcu-select: /'PIC' BLANK+ ( mcu-types ) line-ending/
+mcu-types: / ALPHA DIGIT+ ALPHA DIGIT+ / # the uc names are like P16F690 or P16F84 etc.
 pragmas: 'pragma' + (variable | name) (pragma-expression | name)? line-ending
 pragma-expression: name / EQUAL -/ (number-units | number | string) -
 
@@ -95,7 +93,7 @@ string: single-quoted-string | double-quoted-string
 number-units: number - units
 # number handles both hex and non-hex values for ease of use
 number: /('0'[xX] HEX+ | '-'? DIGIT+)/ | boolean
-units: /([mu]?'s'|[kM]?'Hz')/
+units: /([mu]?'s'|[kM]?'Hz' | '%')/
 boolean: /('TRUE'|'FALSE'|'true'|'false'|'0'|'1')/
 
 validated-variable: identifier-without-keyword

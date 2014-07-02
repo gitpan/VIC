@@ -4,7 +4,7 @@
       "Vikas N. Kumar <vikas@cpan.org>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.38, CPAN::Meta::Converter version 2.110440",
+   "generated_by" : "Module::Build version 0.4205",
    "keywords" : [
       "VIC",
       "PIC",
@@ -26,29 +26,29 @@
    "prereqs" : {
       "build" : {
          "requires" : {
-            "File::Spec" : 0,
-            "Module::Build" : 0,
+            "File::Spec" : "0",
+            "Module::Build" : "0",
             "Pegex" : "0.3",
-            "Test::More" : 0
+            "Test::More" : "0"
          }
       },
       "configure" : {
          "requires" : {
-            "Module::Build" : 0,
-            "Software::License" : 0
+            "Module::Build" : "0",
+            "Software::License" : "0"
          }
       },
       "runtime" : {
          "recommends" : {
-            "App::Prove" : 0,
-            "XXX" : 0
+            "App::Prove" : "0",
+            "XXX" : "0"
          },
          "requires" : {
             "File::ShareDir" : "1.00",
-            "File::Spec" : 0,
-            "Getopt::Long" : 0,
-            "List::MoreUtils" : 0,
-            "List::Util" : 0,
+            "File::Spec" : "0",
+            "Getopt::Long" : "0",
+            "List::MoreUtils" : "0",
+            "List::Util" : "0",
             "Pegex" : "0.3"
          }
       }
@@ -56,35 +56,35 @@
    "provides" : {
       "VIC" : {
          "file" : "lib/VIC.pm",
-         "version" : "0.09"
+         "version" : "0.10"
       },
       "VIC::Command" : {
          "file" : "lib/VIC/Command.pm",
-         "version" : "0.09"
+         "version" : "0.10"
       },
       "VIC::Grammar" : {
          "file" : "lib/VIC/Grammar.pm",
-         "version" : "0.09"
+         "version" : "0.10"
       },
       "VIC::PIC::Any" : {
          "file" : "lib/VIC/PIC/Any.pm",
-         "version" : "0.09"
+         "version" : "0.10"
       },
       "VIC::PIC::Gpsim" : {
          "file" : "lib/VIC/PIC/Gpsim.pm",
-         "version" : "0.09"
+         "version" : "0.10"
       },
       "VIC::PIC::P16F690" : {
          "file" : "lib/VIC/PIC/P16F690.pm",
-         "version" : "0.09"
+         "version" : "0.10"
       },
       "VIC::Parser" : {
          "file" : "lib/VIC/Parser.pm",
-         "version" : "0.09"
+         "version" : "0.10"
       },
       "VIC::Receiver" : {
          "file" : "lib/VIC/Receiver.pm",
-         "version" : "0.09"
+         "version" : "0.10"
       }
    },
    "release_status" : "stable",
@@ -99,5 +99,5 @@
          "url" : "https://github.com/vikasnkumar/vic"
       }
    },
-   "version" : "0.09"
+   "version" : "0.10"
 }

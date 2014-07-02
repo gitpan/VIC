@@ -2,7 +2,7 @@ package VIC::Grammar;
 use strict;
 use warnings;
 
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -14,7 +14,7 @@ sub make_tree {
   {
     '+grammar' => 'vic',
     '+toprule' => 'program',
-    '+version' => '0.2.0',
+    '+version' => '0.2.1',
     'COMMA' => {
       '.rgx' => qr/\G,/
     },
@@ -537,6 +537,9 @@ sub make_tree {
     'math_operator' => {
       '.rgx' => qr/\G([\+\-\*\/%])/
     },
+    'mcu_select' => {
+      '.rgx' => qr/\GPIC[\ \t]+([a-zA-Z][0-9]+[a-zA-Z][0-9]+)[\ \t]*\r?\n?;[\ \t]*\r?\n?\r?\n?/
+    },
     'modifier_constant' => {
       '.all' => [
         {
@@ -711,7 +714,7 @@ sub make_tree {
     'program' => {
       '.all' => [
         {
-          '.ref' => 'uc_select'
+          '.ref' => 'mcu_select'
         },
         {
           '+min' => 0,
@@ -837,9 +840,6 @@ sub make_tree {
         }
       ]
     },
-    'uc_select' => {
-      '.rgx' => qr/\GPIC[\ \t]+((?i:P16F690|P16F690X))[\ \t]*\r?\n?;[\ \t]*\r?\n?\r?\n?/
-    },
     'unary_expr' => {
       '.any' => [
         {
@@ -892,7 +892,7 @@ sub make_tree {
       ]
     },
     'units' => {
-      '.rgx' => qr/\G([mu]?s|[kM]?Hz)/
+      '.rgx' => qr/\G([mu]?s|[kM]?Hz|%)/
     },
     'validated_variable' => {
       '.ref' => 'identifier_without_keyword'

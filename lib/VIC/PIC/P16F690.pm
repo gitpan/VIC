@@ -6,7 +6,7 @@ use Carp;
 use POSIX ();
 use Pegex::Base; # use this instead of Mo
 
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 $VERSION = eval $VERSION;
 
 has type => 'p16f690';
@@ -417,6 +417,7 @@ has pwm_pins => {
     P1C => 7,
     P1B => 6,
     P1A => 5,
+    CCP1 => 5,
     14 => 'P1D',
     7 => 'P1C',
     6 => 'P1B',
@@ -474,6 +475,31 @@ sub address_bits {
     $bits = $self->code_config->{lc $varname}->{bits} || $bits;
     return $bits;
 }
+
+sub convert_to_valid_pin {
+    my ($self, $var) = @_;
+    return undef unless defined $var;
+    return undef if $var =~ /^\d+$/;
+    return $var if exists $self->ports->{$var};
+    return $var if exists $self->pins->{$var};
+    my $pin_no = undef;
+    $pin_no = $self->analog_pins->{$var}->[0] if exists $self->analog_pins->{$var};
+    $pin_no = $self->power_pins->{$var} if exists $self->power_pins->{$var};
+    $pin_no = $self->comparator_pins->{$var} if exists $self->comparator_pins->{$var};
+    $pin_no = $self->interrupt_pins->{$var} if exists $self->interrupt_pins->{$var};
+    $pin_no = $self->timer_pins->{$var} if exists $self->timer_pins->{$var};
+    $pin_no = $self->spi_pins->{$var} if exists $self->spi_pins->{$var};
+    $pin_no = $self->usart_pins->{$var} if exists $self->usart_pins->{$var};
+    $pin_no = $self->clock_pins->{$var} if exists $self->clock_pins->{$var};
+    $pin_no = $self->selector_pins->{$var} if exists $self->selector_pins->{$var};
+    $pin_no = $self->oscillator_pins->{$var} if exists $self->oscillator_pins->{$var};
+    $pin_no = $self->icsp_pins->{$var} if exists $self->icsp_pins->{$var};
+    $pin_no = $self->i2c_pins->{$var} if exists $self->i2c_pins->{$var};
+    $pin_no = $self->pwm_pins->{$var} if exists $self->pwm_pins->{$var};
+    return $self->visible_pins->{$pin_no} if defined $pin_no;
+    return undef;
+}
+
 
 sub validate {
     my ($self, $var) = @_;
@@ -610,16 +636,18 @@ sub write {
             carp "$val cannot be applied to a pin $outp\n";
         } elsif ($self->validate($val)) {
             # ok we want to short two pins, and this is not bit-banging
-            if ($self->pins->{$val}) {
-                my ($vport, $vportbit) = @{$self->pins->{$val}};
+            # although seems like it
+            my $vpin = $self->convert_to_valid_pin($val);
+            if ($vpin and $self->pins->{$vpin}) {
+                my ($vport, $vportbit) = @{$self->pins->{$vpin}};
                 return << "...";
-\tbtfsc PORT$port, $outp
-\tbcf PORT$vport, $val
-\tbtfss PORT$port, $outp
-\tbsf PORT$vport, $val
+\tbtfss PORT$port, $vpin
+\tbcf PORT$vport, $outp
+\tbtfsc PORT$port, $vpin
+\tbsf PORT$vport, $outp
 ...
             } else {
-                carp "$val is a port and cannot be written to a pin $outp. ".
+                carp "$val is a port or unknown pin and cannot be written to a pin $outp. ".
                     "Only a pin can be written to a pin.\n";
                 return;
             }
@@ -2755,6 +2783,217 @@ sub op_ARRIDX {
 sub op_STRIDX {
     my ($self, $string, $idx, %extra) = @_;
     XXX { string => $string, index => $idx, %extra };
+}
+
+sub pwm_details {
+    my ($self, $pwm_frequency, $duty, $type, @pins) = @_;
+    no bigint;
+    #pulse_width = $duty / $pwm_frequency;
+    # timer2 prescaler
+    my $prescaler = 1; # can be 1, 4 or 16
+    # Tosc = 1 / Fosc
+    my $f_osc = $self->frequency;
+    my $pr2 = POSIX::ceil(($f_osc / 4) / $pwm_frequency); # assume prescaler = 1 here
+    if (($pr2 - 1) <= 0xFF) {
+        $prescaler = 1; # prescaler stays 1
+    } else {
+        $pr2 = POSIX::ceil($pr2 / 4); # prescaler is 4 or 16
+        $prescaler = (($pr2 - 1) <= 0xFF) ? 4 : 16;
+    }
+    my $t2con = q{b'00000100'}; # prescaler is 1 or anything else
+    $t2con = q{b'00000101'} if $prescaler == 4;
+    $t2con = q{b'00000111'} if $prescaler == 16;
+    # readjusting PR2 as per supported pre-scalers
+    $pr2 = POSIX::ceil((($f_osc / 4) / $pwm_frequency) / $prescaler);
+    $pr2--;
+    $pr2 &= 0xFF;
+    my $ccpr1l_ccp1con54 = POSIX::ceil(($duty * 4 * ($pr2 + 1)) / 100.0);
+    my $ccp1con5 = ($ccpr1l_ccp1con54 & 0x02); #bit 5
+    my $ccp1con4 = ($ccpr1l_ccp1con54 & 0x01); #bit 4
+    my $ccpr1l = ($ccpr1l_ccp1con54 >> 2) & 0xFF;
+    my $ccpr1l_x = sprintf "0x%02X", $ccpr1l;
+    my $pr2_x = sprintf "0x%02X", $pr2;
+    my $p1m = '00' if $type eq 'single';
+    $p1m = '01' if $type eq 'full_forward';
+    $p1m = '10' if $type eq 'half';
+    $p1m = '11' if $type eq 'full_reverse';
+    $p1m = '00' unless defined $p1m;
+    my $ccp1con = sprintf "b'%s%d%d1100'", $p1m, $ccp1con5, $ccp1con4;
+    my %str = (P1D => 0, P1C => 0, P1B => 0, P1A => 0); # default all are port pins
+    my %trisc = ();
+    foreach my $pin (@pins) {
+        my $vpin = $self->convert_to_valid_pin($pin);
+        unless ($vpin and exists $self->pins->{$vpin}) {
+            carp "$pin is not a valid pin on the microcontroller. Ignoring\n";
+            next;
+        }
+        my ($port, $portpin, $pinno) = @{$self->pins->{$vpin}};
+        # the user may use say RC5 instead of CCP1 and we still want the
+        # CCP1 name which should really be returned as P1A here
+        my $pwm_pin = $self->pwm_pins->{$pinno};
+        next unless defined $pwm_pin;
+        # pulse steering only needed in Single mode
+        $str{$pwm_pin} = 1 if $type eq 'single';
+        $trisc{$portpin} = 1;
+    }
+    my $pstrcon = sprintf "b'0001%d%d%d%d'", $str{P1D}, $str{P1C}, $str{P1B}, $str{P1A};
+    my $trisc_bsf = '';
+    my $trisc_bcf = '';
+    foreach (keys %trisc) {
+        $trisc_bsf .= "\tbsf TRISC, TRISC$_\n";
+        $trisc_bcf .= "\tbcf TRISC, TRISC$_\n";
+    }
+    my $pstrcon_code = '';
+    if ($type eq 'single') {
+        $pstrcon_code = << "...";
+\tbanksel PSTRCON
+\tmovlw $pstrcon
+\tmovwf PSTRCON
+...
+    }
+    return (
+        # actual register values
+        CCP1CON => $ccp1con,
+        PR2 => $pr2_x,
+        T2CON => $t2con,
+        CCPR1L => $ccpr1l_x,
+        PSTRCON => $pstrcon,
+        PSTRCON_CODE => $pstrcon_code,
+        # no ECCPAS
+        PWM1CON => '0x80', # default
+        # code to be added
+        TRISC_BSF => $trisc_bsf,
+        TRISC_BCF => $trisc_bcf,
+        # general comments
+        CCPR1L_CCP1CON54 => $ccpr1l_ccp1con54,
+        FOSC => $f_osc,
+        PRESCALER => $prescaler,
+        PWM_FREQUENCY => $pwm_frequency,
+        DUTYCYCLE => $duty,
+        PINS => \@pins,
+        TYPE => $type,
+    );
+}
+
+sub pwm_code {
+    my $self = shift;
+    my %details = @_;
+    my @pins = @{$details{PINS}};
+    return << "...";
+;;; PWM Type: $details{TYPE}
+;;; PWM Frequency = $details{PWM_FREQUENCY} Hz
+;;; Duty Cycle = $details{DUTYCYCLE} / 100
+;;; CCPR1L:CCP1CON<5:4> = $details{CCPR1L_CCP1CON54}
+;;; CCPR1L = $details{CCPR1L}
+;;; CCP1CON = $details{CCP1CON}
+;;; T2CON = $details{T2CON}
+;;; PR2 = $details{PR2}
+;;; PSTRCON = $details{PSTRCON}
+;;; PWM1CON = $details{PWM1CON}
+;;; Prescaler = $details{PRESCALER}
+;;; Fosc = $details{FOSC}
+;;; disable the PWM output driver for @pins by setting the associated TRIS bit
+\tbanksel TRISC
+$details{TRISC_BSF}
+;;; set PWM period by loading PR2
+\tbanksel PR2
+\tmovlw $details{PR2}
+\tmovwf PR2
+;;; configure the CCP module for the PWM mode by setting CCP1CON
+\tbanksel CCP1CON
+\tmovlw $details{CCP1CON}
+\tmovwf CCP1CON
+;;; set PWM duty cycle
+\tmovlw $details{CCPR1L}
+\tmovwf CCPR1L
+;;; configure and start TMR2
+;;; - clear TMR2IF flag of PIR1 register
+\tbanksel PIR1
+\tbcf PIR1, TMR2IF
+\tmovlw $details{T2CON}
+\tmovwf T2CON
+;;; enable PWM output after a new cycle has started
+\tbtfss PIR1, TMR2IF
+\tgoto \$ - 1
+\tbcf PIR1, TMR2IF
+;;; enable @pins pin output driver by clearing the associated TRIS bit
+$details{PSTRCON_CODE}
+;;; disable auto-shutdown mode
+\tbanksel ECCPAS
+\tclrf ECCPAS
+;;; set PWM1CON if half bridge mode
+\tbanksel PWM1CON
+\tmovlw $details{PWM1CON}
+\tmovwf PWM1CON
+\tbanksel TRISC
+$details{TRISC_BCF}
+...
+}
+
+sub pwm_single {
+    my ($self, $pwm_frequency, $duty, @pins) = @_;
+    my %details = $self->pwm_details($pwm_frequency, $duty, 'single', @pins);
+    # pulse steering automatically taken care of
+    return $self->pwm_code(%details);
+}
+
+sub pwm_halfbridge {
+    my ($self, $pwm_frequency, $duty, $deadband, @pins) = @_;
+    # we ignore the @pins that comes in
+    @pins = qw(P1A P1B);
+    my %details = $self->pwm_details($pwm_frequency, $duty, 'half', @pins);
+    # override PWM1CON
+    if (defined $deadband and $deadband > 0) {
+        my $fosc = $details{FOSC};
+        my $pwm1con = $deadband * $fosc / 4e6; # $deadband is in microseconds
+        $pwm1con &= 0x7F; # 6-bits only
+        $pwm1con |= 0x80; # clear PRSEN bit
+        $details{PWM1CON} = sprintf "0x%02X", $pwm1con;
+    }
+    return $self->pwm_code(%details);
+}
+
+sub pwm_fullbridge {
+    my ($self, $direction, $pwm_frequency, $duty, @pins) = @_;
+    my $type = 'full_forward';
+    $type = 'full_reverse' if $direction =~ /reverse|backward|no?|0/i;
+    # we ignore the @pins that comes in
+    @pins = qw(P1A P1B P1C P1D);
+    my %details = $self->pwm_details($pwm_frequency, $duty, $type, @pins);
+    return $self->pwm_code(%details);
+}
+
+sub pwm_update {
+    my ($self, $pwm_frequency, $duty) = @_;
+    # hack into the existing functions to update only what we need
+    my @pins = qw(P1A P1B P1C P1D);
+    my %details = $self->pwm_details($pwm_frequency, $duty, 'single', @pins);
+    my ($ccp1con5, $ccp1con4);
+    $ccp1con4 = $details{CCPR1L_CCP1CON54} & 0x0001;
+    $ccp1con5 = ($details{CCPR1L_CCP1CON54} >> 1) & 0x0001;
+    if ($ccp1con4) {
+        $ccp1con4 = "\tbsf CCP1CON, DC1B0";
+    } else {
+        $ccp1con4 = "\tbcf CCP1CON, DC1B0";
+    }
+    if ($ccp1con5) {
+        $ccp1con5 = "\tbsf CCP1CON, DC1B1";
+    } else {
+        $ccp1con5 = "\tbcf CCP1CON, DC1B1";
+    }
+    return << "...";
+;;; updating PWM duty cycle for a given frequency
+;;; PWM Frequency = $details{PWM_FREQUENCY} Hz
+;;; Duty Cycle = $details{DUTYCYCLE} / 100
+;;; CCPR1L:CCP1CON<5:4> = $details{CCPR1L_CCP1CON54}
+;;; CCPR1L = $details{CCPR1L}
+;;; update CCPR1L and CCP1CON<5:4> or the DC1B[01] bits
+$ccp1con4
+$ccp1con5
+\tmovlw $details{CCPR1L}
+\tmovwf CCPR1L
+...
+
 }
 
 1;
