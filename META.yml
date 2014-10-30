@@ -5,13 +5,13 @@ author:
 build_requires:
   File::Spec: 0
   Module::Build: 0
-  Pegex: 0.3
+  Pegex: 0.55
   Test::More: 0
 configure_requires:
   Module::Build: 0
   Software::License: 0
 dynamic_config: 1
-generated_by: 'Module::Build version 0.38, CPAN::Meta::Converter version 2.120351'
+generated_by: 'Module::Build version 0.4207, CPAN::Meta::Converter version 2.132661'
 keywords:
   - VIC
   - PIC
@@ -27,28 +27,31 @@ no_index:
 provides:
   VIC:
     file: lib/VIC.pm
-    version: 0.11
+    version: 0.12
   VIC::Command:
     file: lib/VIC/Command.pm
-    version: 0.11
+    version: 0.12
   VIC::Grammar:
     file: lib/VIC/Grammar.pm
-    version: 0.11
+    version: 0.12
   VIC::PIC::Any:
     file: lib/VIC/PIC/Any.pm
-    version: 0.11
+    version: 0.12
+  VIC::PIC::Base:
+    file: lib/VIC/PIC/Base.pm
+    version: 0.12
   VIC::PIC::Gpsim:
     file: lib/VIC/PIC/Gpsim.pm
-    version: 0.11
+    version: 0.12
   VIC::PIC::P16F690:
     file: lib/VIC/PIC/P16F690.pm
-    version: 0.11
+    version: 0.12
   VIC::Parser:
     file: lib/VIC/Parser.pm
-    version: 0.11
+    version: 0.12
   VIC::Receiver:
     file: lib/VIC/Receiver.pm
-    version: 0.11
+    version: 0.12
 recommends:
   App::Prove: 0
   XXX: 0
@@ -58,9 +61,10 @@ requires:
   Getopt::Long: 0
   List::MoreUtils: 0
   List::Util: 0
-  Pegex: 0.3
+  Pegex: 0.55
 resources:
-  bugtracker: https://github.com/vikasnkumar/vic/issues
+  IRC: irc://irc.freenode.net/#vic
+  bugtracker: https://github.com/selectiveintellect/vic/issues
   license: http://dev.perl.org/licenses/
-  repository: https://github.com/vikasnkumar/vic
-version: 0.11
+  repository: https://github.com/selectiveintellect/vic
+version: 0.12

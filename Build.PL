@@ -18,12 +18,12 @@ my $build = Module::Build->new(
         'Module::Build' => 0,
         'Test::More' => 0,
         'File::Spec' => 0,
-        'Pegex' => 0.30, # needed for PL_files to work
+        'Pegex' => 0.55, # needed for PL_files to work
     },
     requires => {
         'Getopt::Long' => 0,
         'File::Spec' => 0,
-        'Pegex' => 0.30, # needed for PL_files to work
+        'Pegex' => 0.55, # needed for PL_files to work
         'List::Util' => 0,
         'List::MoreUtils' => 0,
     },
@@ -36,8 +36,9 @@ my $build = Module::Build->new(
     add_to_cleanup => [ qw/*.bak/ ],
     meta_merge => {
         resources => {
-            repository => "https://github.com/vikasnkumar/vic",
-            bugtracker => "https://github.com/vikasnkumar/vic/issues",
+            repository => "https://github.com/selectiveintellect/vic",
+            bugtracker => "https://github.com/selectiveintellect/vic/issues",
+            x_IRC => "irc://irc.freenode.net/#vic",
         },
         keywords => [qw/VIC PIC assembly/],
         no_index => {

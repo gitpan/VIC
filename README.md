@@ -1,17 +1,15 @@
-VIC
-===
+#VIC&trade;
 
-VIC is a nice syntax that compiles to PIC assembly.
+VIC&trade; is a nice syntax that compiles to PIC assembly. For detailed up-to-date documentation
+read <http://selectiveintellect.github.io/vic>.
 
-![MeMe](https://raw.githubusercontent.com/vikasnkumar/vic/master/doc/images/vicmeme.jpg)
-
-#Building as a user
+##Building as a user
 
     $ perl ./Build.PL --install_base=/usr/local/
     $ ./Build test
     $ ./Build install
 
-#Dependencies
+##Dependencies
 
 This module depends on the following:
 
@@ -20,7 +18,7 @@ This module depends on the following:
 - `Getopt::Long` (for handling command line options. Comes with perl itself)
 - `XXX` (only required for debugging)
 
-#Testing the Module
+##Testing the Module
 
 To test you will need to have `App::Prove` installed if you're developing
 
@@ -30,27 +28,27 @@ Another option is to use `Build.PL`
 
     $ ./Build test
 
-#Vim Syntax
+##Vim Syntax
 
-The `vim` syntax for VIC is in `share/vic.vim`. You can place it in
+The `vim` syntax for VIC&trade; is in `share/vic.vim`. You can place it in
 `$HOME/.vim/syntax` on Linux and OS X and in `$HOME/vimfiles/syntax` on Windows
 systems.
 
-#How to write VIC programs
+##How to write VIC&trade; programs
 
 Documentation coming soon...
 
 
-#Compiling examples
+##Compiling examples
 
 The examples are in `share/examples` folder. To compile the `helloworld.vic`
 example you can do the following:
 
     $ ./bin/vic ./share/examples/helloworld.vic -o ./share/examples/helloworld.asm
 
-This will generate the PIC assembly for the VIC file.
+This will generate the PIC assembly for the VIC&trade; file.
 
-#Placing `vic` in your `$PATH` for Makefiles
+##Placing `vic` in your `$PATH` for Makefiles
 
 Let us assume that your git checkout copy is in `$HOME/github/vic` then,
 
@@ -62,7 +60,7 @@ Let us assume that your git checkout copy is in `$HOME/github/vic` then,
 _If you're installing it from CPAN or using `Build.PL` you do not need to set the
 above._
 
-#Testing on PIC microcontrollers on Linux and Mac OS X
+##Testing on PIC microcontrollers on Linux and Mac OS X
 
 The `helloworld.vic` test is for the Low Pin Count Demo board from Microchip and
 uses the PICKit2 programmer to write to the microcontroller P16F690 on the
@@ -80,6 +78,7 @@ This will produce a `helloworld.hex` file which you will have to write to the
 microcontroller using PICKit2 programmer from Microchip. You could use any other
 programmer as well as long as you have the right software for it. To write to
 the microcontroller on Linux or Mac OS X you need to have `pk2cmd` installed.
+Refer <http://selectiveintellect.github.io/vic/pk2cmd.html> for details on that.
 
 If you have `pk2cmd` installed in `/usr/local` you will need to set the `PATH`
 variable as follows before doing the write to the microcontroller:
@@ -112,10 +111,10 @@ To erase the code from the microcontroller,
 *NOTE*: All the above have been implemented in a `GNUmakefile` present under
 `share/examples/GNUmakefile`.
 
-#Testing on PIC microcontrollers on Windows
+##Testing on PIC microcontrollers on Windows
 
 For Windows, we currently recommend using the Microchip provided IDE. You can
-use VIC to generate the assembly files which you can then load into the IDE as
+use VIC&trade; to generate the assembly files which you can then load into the IDE as
 part of your project and use.
 
 If you want to use Cygwin to perform builds using `gpasm` and `pk2cmd` you may
@@ -123,9 +122,9 @@ do that and let us know if you succeed so we can write instructions for other
 users.
 
 
-#Recompiling the grammar
+##Recompiling the grammar
 
-This is for VIC developers only.
+This is for VIC&trade; developers only.
 
 To recompile the grammar into `lib/VIC/Grammar.pm` run,
 
@@ -142,15 +141,30 @@ or
 
 All of the above do the same thing.
 
-#Contributors
+##Authors
 
-- Vikas N Kumar [@vikasnkumar](https://github.com/vikasnkumar/)
+- Vikas N Kumar [@selectiveintellect](https://github.com/selectiveintellect/)
+
+##Contributors
+
 - Ingy [@ingydotnet](https://github.com/ingydotnet/)
 
-#Copyright
+##Copyright
 
 Copyright: 2014. Vikas N Kumar. All Rights Reserved.
 
-LICENSE: refer LICENSE file in the repository.
+## License
 
+VIC&trade; is licensed under the [license terms of
+Perl](http://dev.perl.org/licenses/). Refer the LICENSE file in the repository
+for more details.
+
+## Sponsorship
+
+The development of VIC&trade; has been sponsored by [Selective
+Intellect](http://selectiveintellect.com)
+
+## Meme
+
+![MeMe](https://raw.githubusercontent.com/selectiveintellect/vic/master/doc/images/vicmeme.jpg)
 

@@ -5,7 +5,7 @@ use bigint;
 use Carp;
 use Pegex::Base; # use this instead of Mo
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 $VERSION = eval $VERSION;
 
 has type => 'gpsim';
@@ -219,7 +219,7 @@ sub stop_after {
 
 sub logfile {
     my ($self, $file) = @_;
-    $file = '' unless defined $file;
+    $file = "vicsim.log" unless defined $file;
     return "\t.sim \"log lxt $file\"\n" if $file =~ /\.lxt/i;
     return "\t.sim \"log on $file\"\n";
 }

@@ -4,7 +4,7 @@
       "Vikas N. Kumar <vikas@cpan.org>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.38, CPAN::Meta::Converter version 2.120351",
+   "generated_by" : "Module::Build version 0.4207",
    "keywords" : [
       "VIC",
       "PIC",
@@ -28,7 +28,7 @@
          "requires" : {
             "File::Spec" : "0",
             "Module::Build" : "0",
-            "Pegex" : "0.3",
+            "Pegex" : "0.55",
             "Test::More" : "0"
          }
       },
@@ -49,55 +49,60 @@
             "Getopt::Long" : "0",
             "List::MoreUtils" : "0",
             "List::Util" : "0",
-            "Pegex" : "0.3"
+            "Pegex" : "0.55"
          }
       }
    },
    "provides" : {
       "VIC" : {
          "file" : "lib/VIC.pm",
-         "version" : "0.11"
+         "version" : "0.12"
       },
       "VIC::Command" : {
          "file" : "lib/VIC/Command.pm",
-         "version" : "0.11"
+         "version" : "0.12"
       },
       "VIC::Grammar" : {
          "file" : "lib/VIC/Grammar.pm",
-         "version" : "0.11"
+         "version" : "0.12"
       },
       "VIC::PIC::Any" : {
          "file" : "lib/VIC/PIC/Any.pm",
-         "version" : "0.11"
+         "version" : "0.12"
+      },
+      "VIC::PIC::Base" : {
+         "file" : "lib/VIC/PIC/Base.pm",
+         "version" : "0.12"
       },
       "VIC::PIC::Gpsim" : {
          "file" : "lib/VIC/PIC/Gpsim.pm",
-         "version" : "0.11"
+         "version" : "0.12"
       },
       "VIC::PIC::P16F690" : {
          "file" : "lib/VIC/PIC/P16F690.pm",
-         "version" : "0.11"
+         "version" : "0.12"
       },
       "VIC::Parser" : {
          "file" : "lib/VIC/Parser.pm",
-         "version" : "0.11"
+         "version" : "0.12"
       },
       "VIC::Receiver" : {
          "file" : "lib/VIC/Receiver.pm",
-         "version" : "0.11"
+         "version" : "0.12"
       }
    },
    "release_status" : "stable",
    "resources" : {
       "bugtracker" : {
-         "web" : "https://github.com/vikasnkumar/vic/issues"
+         "web" : "https://github.com/selectiveintellect/vic/issues"
       },
       "license" : [
          "http://dev.perl.org/licenses/"
       ],
       "repository" : {
-         "url" : "https://github.com/vikasnkumar/vic"
-      }
+         "url" : "https://github.com/selectiveintellect/vic"
+      },
+      "x_IRC" : "irc://irc.freenode.net/#vic"
    },
-   "version" : "0.11"
+   "version" : "0.12"
 }
