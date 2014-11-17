@@ -6,7 +6,7 @@ use POSIX ();
 use List::Util qw(max);
 use List::MoreUtils qw(any firstidx indexes);
 
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -49,13 +49,13 @@ sub got_mcu_select {
     # assume supported type else return
     $self->pic(VIC::PIC::Any->new($type));
     unless (defined $self->pic and
-        $self->pic->type eq $type) {
+        defined $self->pic->type) {
         $self->parser->throw_error("$type is not a supported chip");
     }
     $self->ast->{include} = $self->pic->include;
     # set the defaults in case the headers are not provided by the user
     $self->ast->{org} = $self->pic->org;
-    $self->ast->{chip_config} = $self->pic->chip_config;
+    $self->ast->{chip_config} = $self->pic->get_chip_config;
     $self->ast->{code_config} = $self->pic->code_config;
     # create the default simulator
     $self->simulator(VIC::PIC::Any->new_simulator(pic => $self->pic));
@@ -67,7 +67,7 @@ sub got_pragmas {
     $self->flatten($list);
     $self->pic->update_code_config(@$list);
     # get the updated config
-    $self->ast->{chip_config} = $self->pic->chip_config;
+    $self->ast->{chip_config} = $self->pic->get_chip_config;
     $self->ast->{code_config} = $self->pic->code_config;
     my ($sim, $stype) = @$list if scalar @$list;
     if ($sim eq 'simulator' and $stype !~ /disable/i) {
@@ -226,8 +226,10 @@ sub got_instruction {
         # this is a simulator instruction
         $tag = 'SIM';
     } else {
-        return $self->parser->throw_error("Unknown instruction '$method'")
-            unless $self->pic->can($method);
+        unless ($self->pic->can($method)) {
+            my $err = "Unsupported instruction '$method' for chip " . uc $self->pic->type;
+            return $self->parser->throw_error($err);
+        }
     }
     my @args = ();
     while (scalar @$list) {

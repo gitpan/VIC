@@ -2,7 +2,7 @@ package VIC::Grammar;
 use strict;
 use warnings;
 
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -14,7 +14,7 @@ sub make_tree {   # Generated/Inlined by Pegex::Grammar (0.57)
   {
     '+grammar' => 'vic',
     '+toprule' => 'program',
-    '+version' => '0.2.3',
+    '+version' => '0.2.4',
     'COMMA' => {
       '.rgx' => qr/\G,/
     },
@@ -538,7 +538,7 @@ sub make_tree {   # Generated/Inlined by Pegex::Grammar (0.57)
       '.rgx' => qr/\G([\+\-\*\/%])/
     },
     'mcu_select' => {
-      '.rgx' => qr/\GPIC[\ \t]+([a-zA-Z][0-9]+[a-zA-Z][0-9]+|Any)[\ \t]*\r?\n?;[\ \t]*\r?\n?\r?\n?/
+      '.rgx' => qr/\GPIC[\ \t]+([a-zA-Z]+[0-9]+[a-zA-Z][0-9]+[a-zA-Z]?|Any)[\ \t]*\r?\n?;[\ \t]*\r?\n?\r?\n?/
     },
     'modifier_constant' => {
       '.all' => [

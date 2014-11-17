@@ -18,6 +18,7 @@ my $build = Module::Build->new(
         'Module::Build' => 0,
         'Test::More' => 0,
         'File::Spec' => 0,
+        'File::Which' => 0,
         'Pegex' => 0.55, # needed for PL_files to work
         'strictures' => 0,
         'indirect' => 0,
@@ -45,12 +46,11 @@ my $build = Module::Build->new(
             repository => 'https://github.com/selectiveintellect/vic',
             bugtracker => 'https://github.com/selectiveintellect/vic/issues',
             x_IRC => 'irc://irc.freenode.net/#vic',
-            x_twitter => 'https://twitter.com/_vicash_',
+            #x_Twitter => 'https://twitter.com/_vicash_',
         },
         keywords => [qw/VIC PIC assembly/],
         no_index => {
             directory => [qw/ t /],
-            namespace => ['VIC::PIC::Roles', 'VIC::PIC::Functions'],
         },
     },
     PL_files => { 'share/rebuild-grammar.PL' => [] },

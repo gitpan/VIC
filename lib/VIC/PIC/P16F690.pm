@@ -2,7 +2,7 @@ package VIC::PIC::P16F690;
 use strict;
 use warnings;
 
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 $VERSION = eval $VERSION;
 
 use Moo;
@@ -406,6 +406,23 @@ has cmp_output_pins => (is => 'ro', default => sub {
     {
         C1OUT => 'C1OUT',
         C2OUT => 'C2OUT',
+    }
+});
+
+has chip_config => (is => 'ro', default => sub {
+    {
+        on_off => {
+            MCLRE => 0,
+            WDT => 0,
+            PWRTE => 0,
+            CP => 0,
+            BOR => 0,
+            IESO => 0,
+            FCMEN => 0,
+        },
+        f_osc => {
+            INTRC_OSC => 0,
+        },
     }
 });
 

@@ -1,7 +1,7 @@
 package VIC::PIC::P12F683;
 use strict;
 use warnings;
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 $VERSION = eval $VERSION;
 use Moo;
 extends 'VIC::PIC::Base';
@@ -274,6 +274,23 @@ has cmp_input_pins => (is => 'ro', default => sub {
 has cmp_output_pins => (is => 'ro', default => sub {
     {
         COUT => 'COUT',
+    }
+});
+
+has chip_config => (is => 'ro', default => sub {
+    {
+        on_off => {
+            MCLRE => 0,
+            WDT => 0,
+            PWRTE => 0,
+            CP => 0,
+            BOREN => 0,
+            IESO => 0,
+            FCMEN => 0,
+        },
+        f_osc => {
+            INTRC_OSC => 0,
+        },
     }
 });
 

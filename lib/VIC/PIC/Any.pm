@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use Carp;
 
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 $VERSION = eval $VERSION;
 
 use VIC::PIC::Gpsim;
@@ -44,6 +44,7 @@ use constant SIMS => {
 
 sub _get_pic_type {
     my $type = shift;
+    $type =~ s/^PIC/P/gi;
     my $ctype = PICS->{uc $type};
     unless (defined $ctype) {
         foreach my $regex (keys %{+PICREGEX}) {
