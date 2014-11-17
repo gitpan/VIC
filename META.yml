@@ -28,21 +28,25 @@ name: VIC
 no_index:
   directory:
     - t
+  namespace:
+    - VIC::PIC::Roles
+    - VIC::PIC::Functions
 provides:
   VIC:
     file: lib/VIC.pm
-    version: 0.13
+    version: 0.14
   VIC::Command:
     file: lib/VIC/Command.pm
-    version: 0.13
+    version: 0.14
   VIC::Grammar:
     file: lib/VIC/Grammar.pm
-    version: 0.13
+    version: 0.14
   VIC::PIC::Any:
     file: lib/VIC/PIC/Any.pm
-    version: 0.13
+    version: 0.14
   VIC::PIC::Base:
     file: lib/VIC/PIC/Base.pm
+    version: 0.14
   VIC::PIC::Functions::ADC:
     file: lib/VIC/PIC/Functions/ADC.pm
   VIC::PIC::Functions::CCP:
@@ -79,43 +83,61 @@ provides:
     file: lib/VIC/PIC/Functions/USB.pm
   VIC::PIC::Gpsim:
     file: lib/VIC/PIC/Gpsim.pm
-    version: 0.13
+    version: 0.14
   VIC::PIC::P12F683:
     file: lib/VIC/PIC/P12F683.pm
+    version: 0.14
   VIC::PIC::P16F627A:
     file: lib/VIC/PIC/P16F627A.pm
+    version: 0.14
   VIC::PIC::P16F628A:
     file: lib/VIC/PIC/P16F628A.pm
+    version: 0.14
   VIC::PIC::P16F631:
     file: lib/VIC/PIC/P16F631.pm
+    version: 0.14
   VIC::PIC::P16F648A:
     file: lib/VIC/PIC/P16F648A.pm
+    version: 0.14
   VIC::PIC::P16F677:
     file: lib/VIC/PIC/P16F677.pm
+    version: 0.14
   VIC::PIC::P16F685:
     file: lib/VIC/PIC/P16F685.pm
+    version: 0.14
   VIC::PIC::P16F687:
     file: lib/VIC/PIC/P16F687.pm
+    version: 0.14
   VIC::PIC::P16F689:
     file: lib/VIC/PIC/P16F689.pm
+    version: 0.14
   VIC::PIC::P16F690:
     file: lib/VIC/PIC/P16F690.pm
+    version: 0.14
   VIC::PIC::P18F13K50:
     file: lib/VIC/PIC/P18F13K50.pm
+    version: 0.14
   VIC::PIC::P18F14K50:
     file: lib/VIC/PIC/P18F14K50.pm
+    version: 0.14
   VIC::PIC::P18F242:
     file: lib/VIC/PIC/P18F242.pm
+    version: 0.14
   VIC::PIC::P18F252:
     file: lib/VIC/PIC/P18F252.pm
+    version: 0.14
   VIC::PIC::P18F442:
     file: lib/VIC/PIC/P18F442.pm
+    version: 0.14
   VIC::PIC::P18F452:
     file: lib/VIC/PIC/P18F452.pm
+    version: 0.14
   VIC::PIC::P18LF13K50:
     file: lib/VIC/PIC/P18LF13K50.pm
+    version: 0.14
   VIC::PIC::P18LF14K50:
     file: lib/VIC/PIC/P18LF14K50.pm
+    version: 0.14
   VIC::PIC::Roles::ADC:
     file: lib/VIC/PIC/Roles.pm
   VIC::PIC::Roles::CCP:
@@ -152,10 +174,10 @@ provides:
     file: lib/VIC/PIC/Roles.pm
   VIC::Parser:
     file: lib/VIC/Parser.pm
-    version: 0.13
+    version: 0.14
   VIC::Receiver:
     file: lib/VIC/Receiver.pm
-    version: 0.13
+    version: 0.14
 recommends:
   App::Prove: 0
   XXX: 0
@@ -170,7 +192,8 @@ requires:
   namespace::clean: 0
 resources:
   IRC: irc://irc.freenode.net/#vic
+  Twitter: https://twitter.com/_vicash_
   bugtracker: https://github.com/selectiveintellect/vic/issues
   license: http://dev.perl.org/licenses/
   repository: https://github.com/selectiveintellect/vic
-version: 0.13
+version: 0.14
