@@ -29,7 +29,11 @@
             "File::Spec" : "0",
             "Module::Build" : "0",
             "Pegex" : "0.55",
-            "Test::More" : "0"
+            "Test::More" : "0",
+            "bareword::filehandles" : "0",
+            "indirect" : "0",
+            "multidimensional" : "0",
+            "strictures" : "0"
          }
       },
       "configure" : {
@@ -49,46 +53,199 @@
             "Getopt::Long" : "0",
             "List::MoreUtils" : "0",
             "List::Util" : "0",
-            "Pegex" : "0.55"
+            "Moo" : "0",
+            "Pegex" : "0.55",
+            "namespace::clean" : "0"
          }
       }
    },
    "provides" : {
       "VIC" : {
          "file" : "lib/VIC.pm",
-         "version" : "0.12"
+         "version" : "0.13"
       },
       "VIC::Command" : {
          "file" : "lib/VIC/Command.pm",
-         "version" : "0.12"
+         "version" : "0.13"
       },
       "VIC::Grammar" : {
          "file" : "lib/VIC/Grammar.pm",
-         "version" : "0.12"
+         "version" : "0.13"
       },
       "VIC::PIC::Any" : {
          "file" : "lib/VIC/PIC/Any.pm",
-         "version" : "0.12"
+         "version" : "0.13"
       },
       "VIC::PIC::Base" : {
-         "file" : "lib/VIC/PIC/Base.pm",
-         "version" : "0.12"
+         "file" : "lib/VIC/PIC/Base.pm"
+      },
+      "VIC::PIC::Functions::ADC" : {
+         "file" : "lib/VIC/PIC/Functions/ADC.pm"
+      },
+      "VIC::PIC::Functions::CCP" : {
+         "file" : "lib/VIC/PIC/Functions/CCP.pm"
+      },
+      "VIC::PIC::Functions::Chip" : {
+         "file" : "lib/VIC/PIC/Functions/Chip.pm"
+      },
+      "VIC::PIC::Functions::CodeGen" : {
+         "file" : "lib/VIC/PIC/Functions/CodeGen.pm"
+      },
+      "VIC::PIC::Functions::Comparator" : {
+         "file" : "lib/VIC/PIC/Functions/Comparator.pm"
+      },
+      "VIC::PIC::Functions::ECCP" : {
+         "file" : "lib/VIC/PIC/Functions/ECCP.pm"
+      },
+      "VIC::PIC::Functions::GPIO" : {
+         "file" : "lib/VIC/PIC/Functions/GPIO.pm"
+      },
+      "VIC::PIC::Functions::I2C" : {
+         "file" : "lib/VIC/PIC/Functions/I2C.pm"
+      },
+      "VIC::PIC::Functions::ISR" : {
+         "file" : "lib/VIC/PIC/Functions/ISR.pm"
+      },
+      "VIC::PIC::Functions::Operations" : {
+         "file" : "lib/VIC/PIC/Functions/Operations.pm"
+      },
+      "VIC::PIC::Functions::Operators" : {
+         "file" : "lib/VIC/PIC/Functions/Operators.pm"
+      },
+      "VIC::PIC::Functions::PSP" : {
+         "file" : "lib/VIC/PIC/Functions/PSP.pm"
+      },
+      "VIC::PIC::Functions::SPI" : {
+         "file" : "lib/VIC/PIC/Functions/SPI.pm"
+      },
+      "VIC::PIC::Functions::SRLatch" : {
+         "file" : "lib/VIC/PIC/Functions/SRLatch.pm"
+      },
+      "VIC::PIC::Functions::Timer" : {
+         "file" : "lib/VIC/PIC/Functions/Timer.pm"
+      },
+      "VIC::PIC::Functions::USART" : {
+         "file" : "lib/VIC/PIC/Functions/USART.pm"
+      },
+      "VIC::PIC::Functions::USB" : {
+         "file" : "lib/VIC/PIC/Functions/USB.pm"
       },
       "VIC::PIC::Gpsim" : {
          "file" : "lib/VIC/PIC/Gpsim.pm",
-         "version" : "0.12"
+         "version" : "0.13"
+      },
+      "VIC::PIC::P12F683" : {
+         "file" : "lib/VIC/PIC/P12F683.pm"
+      },
+      "VIC::PIC::P16F627A" : {
+         "file" : "lib/VIC/PIC/P16F627A.pm"
+      },
+      "VIC::PIC::P16F628A" : {
+         "file" : "lib/VIC/PIC/P16F628A.pm"
+      },
+      "VIC::PIC::P16F631" : {
+         "file" : "lib/VIC/PIC/P16F631.pm"
+      },
+      "VIC::PIC::P16F648A" : {
+         "file" : "lib/VIC/PIC/P16F648A.pm"
+      },
+      "VIC::PIC::P16F677" : {
+         "file" : "lib/VIC/PIC/P16F677.pm"
+      },
+      "VIC::PIC::P16F685" : {
+         "file" : "lib/VIC/PIC/P16F685.pm"
+      },
+      "VIC::PIC::P16F687" : {
+         "file" : "lib/VIC/PIC/P16F687.pm"
+      },
+      "VIC::PIC::P16F689" : {
+         "file" : "lib/VIC/PIC/P16F689.pm"
       },
       "VIC::PIC::P16F690" : {
-         "file" : "lib/VIC/PIC/P16F690.pm",
-         "version" : "0.12"
+         "file" : "lib/VIC/PIC/P16F690.pm"
+      },
+      "VIC::PIC::P18F13K50" : {
+         "file" : "lib/VIC/PIC/P18F13K50.pm"
+      },
+      "VIC::PIC::P18F14K50" : {
+         "file" : "lib/VIC/PIC/P18F14K50.pm"
+      },
+      "VIC::PIC::P18F242" : {
+         "file" : "lib/VIC/PIC/P18F242.pm"
+      },
+      "VIC::PIC::P18F252" : {
+         "file" : "lib/VIC/PIC/P18F252.pm"
+      },
+      "VIC::PIC::P18F442" : {
+         "file" : "lib/VIC/PIC/P18F442.pm"
+      },
+      "VIC::PIC::P18F452" : {
+         "file" : "lib/VIC/PIC/P18F452.pm"
+      },
+      "VIC::PIC::P18LF13K50" : {
+         "file" : "lib/VIC/PIC/P18LF13K50.pm"
+      },
+      "VIC::PIC::P18LF14K50" : {
+         "file" : "lib/VIC/PIC/P18LF14K50.pm"
+      },
+      "VIC::PIC::Roles::ADC" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::CCP" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::Chip" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::CodeGen" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::Comparator" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::ECCP" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::GPIO" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::I2C" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::ISR" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::Operations" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::Operators" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::PSP" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::SPI" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::SRLatch" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::Timer" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::USART" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
+      },
+      "VIC::PIC::Roles::USB" : {
+         "file" : "lib/VIC/PIC/Roles.pm"
       },
       "VIC::Parser" : {
          "file" : "lib/VIC/Parser.pm",
-         "version" : "0.12"
+         "version" : "0.13"
       },
       "VIC::Receiver" : {
          "file" : "lib/VIC/Receiver.pm",
-         "version" : "0.12"
+         "version" : "0.13"
       }
    },
    "release_status" : "stable",
@@ -104,5 +261,5 @@
       },
       "x_IRC" : "irc://irc.freenode.net/#vic"
    },
-   "version" : "0.12"
+   "version" : "0.13"
 }

@@ -1,12 +1,12 @@
-package VIC::PIC::P16F690;
+package VIC::PIC::P16F685;
 use strict;
 use warnings;
 use Moo;
 extends 'VIC::PIC::Base';
 
 # role CodeGen
-has type => (is => 'ro', default => 'p16f690');
-has include => (is => 'ro', default => 'p16f690.inc');
+has type => (is => 'ro', default => 'p16f685');
+has include => (is => 'ro', default => 'p16f685.inc');
 
 #role Chip
 has f_osc => (is => 'ro', default => 4e6); # 4MHz internal oscillator
@@ -16,7 +16,7 @@ has wreg_size => (is => 'ro', default => 8); # 8-bit register WREG
 # all memory is in bytes
 has memory => (is => 'ro', default => sub {
     {
-        flash => 4096, # words
+        flash => 4096, #words
         SRAM => 256,
         EEPROM => 256,
     }
@@ -91,10 +91,6 @@ has registers => (is => 'ro', default => sub {
         TMR2 => [0x011],
         T2CON => [0x012],
         PR2 => [0x092],
-        SSPBUF => [0x013],
-        SSPADD => [0x093],
-        SSPCON => [0x014],
-        SSPSTAT => [0x094],
         CCPR1L => [0x015],
         WPUA => [0x095],
         WPUB => [0x115],
@@ -103,16 +99,9 @@ has registers => (is => 'ro', default => sub {
         IOCB => [0x116],
         CCP1CON => [0x017],
         WDTCON => [0x097],
-        RCSTA => [0x018],
-        TXSTA => [0x098],
         VRCON => [0x118],
-        TXREG => [0x019],
-        SPBRG => [0x099],
         CM1CON0 => [0x119],
-        RCREG => [0x01A],
-        SPBRGH => [0x09A],
         CM2CON0 => [0x11A],
-        BAUDCTL => [0x09B],
         CM2CON1 => [0x11B],
         PWM1CON => [0x01C],
         ECCPAS => [0x01D],
@@ -137,12 +126,12 @@ has pins => (is => 'ro', default => sub {
         5 => [qw(RC5 CCP1 P1A)],
         6 => [qw(RC4 C2OUT P1B)],
         7 => [qw(RC3 AN7 C12IN3- P1C)],
-        8 => [qw(RC6 AN8 SS)],
-        9 => [qw(RC7 AN9 SDO)],
-        10 => [qw(RB7 TX CK)],
-        11 => [qw(RB6 SCK SCL)],
-        12 => [qw(RB5 AN11 RX DT)],
-        13 => [qw(RB4 AN10 SDI SDA)],
+        8 => [qw(RC6 AN8)],
+        9 => [qw(RC7 AN9)],
+        10 => [qw(RB7)],
+        11 => [qw(RB6)],
+        12 => [qw(RB5 AN11)],
+        13 => [qw(RB4 AN10)],
         14 => [qw(RC2 AN6 C12IN2- P1D)],
         15 => [qw(RC1 AN5 C12IN1-)],
         16 => [qw(RC0 AN4 C2IN+)],
@@ -357,36 +346,6 @@ has ioc_pins => (is => 'ro', default => sub {
     }
 });
 
-has usart_pins => (is => 'ro', default => sub {
-    {
-        async_in => 'RX',
-        async_out => 'TX',
-        sync_clock => 'CK',
-        sync_data => 'DT',
-    }
-});
-
-has selector_pins => (is => 'ro', default => sub {
-    {
-        'spi_or_i2c' => 'SS',
-    }
-});
-
-has spi_pins => (is => 'ro', default => sub {
-    {
-        data_out => 'SDO',
-        data_in => 'SDI',
-        clock => 'SCK',
-    }
-});
-
-has i2c_pins => (is => 'ro', default => sub {
-    {
-        data => 'SDA',
-        clock => 'SCL',
-    }
-});
-
 has cmp_input_pins => (is => 'ro', default => sub {
     {
         'C1IN+' => 'C1IN+',
@@ -406,7 +365,7 @@ has cmp_output_pins => (is => 'ro', default => sub {
 });
 
 my @rolenames = qw(CodeGen Operators Chip GPIO ADC ISR Timer Operations ECCP
-                    USART SPI I2C Comparator);
+Comparator);
 my @roles = map (("VIC::PIC::Roles::$_", "VIC::PIC::Functions::$_"), @rolenames);
 with @roles;
 
@@ -422,7 +381,7 @@ __END__
 
 =head1 NAME
 
-VIC::PIC::P16F690
+VIC::PIC::P16F685
 
 =head1 SYNOPSIS
 

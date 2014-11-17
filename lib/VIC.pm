@@ -9,7 +9,7 @@ use VIC::Receiver;
 our $Debug = 0;
 our $Intermediate = 0;
 
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 $VERSION = eval $VERSION;
 
 sub compile {
@@ -28,6 +28,14 @@ sub compile {
     $parser->parse($input);
 }
 
+sub supported_chips { return VIC::Receiver::supported_chips(); }
+
+sub supported_simulators { return VIC::Receiver::supported_simulators(); }
+
+sub is_chip_supported { return VIC::Receiver::is_chip_supported(@_) };
+
+sub list_chip_features { return VIC::Receiver::list_chip_features(@_) };
+
 1;
 
 =encoding utf8
@@ -40,9 +48,11 @@ VIC - A Viciously Simple Syntax for PIC Microcontrollers
 
     $ vic program.vic -o program.asm
 
+    $ vic -h
+
 =head1 DESCRIPTION
 
-TODO
+Refer documentation at L<http://selectiveintellect.github.io/vic/>.
 
 =head1 AUTHOR
 

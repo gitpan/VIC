@@ -2,7 +2,7 @@ package VIC::Grammar;
 use strict;
 use warnings;
 
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -14,7 +14,7 @@ sub make_tree {   # Generated/Inlined by Pegex::Grammar (0.57)
   {
     '+grammar' => 'vic',
     '+toprule' => 'program',
-    '+version' => '0.2.1',
+    '+version' => '0.2.3',
     'COMMA' => {
       '.rgx' => qr/\G,/
     },
@@ -538,7 +538,7 @@ sub make_tree {   # Generated/Inlined by Pegex::Grammar (0.57)
       '.rgx' => qr/\G([\+\-\*\/%])/
     },
     'mcu_select' => {
-      '.rgx' => qr/\GPIC[\ \t]+([a-zA-Z][0-9]+[a-zA-Z][0-9]+)[\ \t]*\r?\n?;[\ \t]*\r?\n?\r?\n?/
+      '.rgx' => qr/\GPIC[\ \t]+([a-zA-Z][0-9]+[a-zA-Z][0-9]+|Any)[\ \t]*\r?\n?;[\ \t]*\r?\n?\r?\n?/
     },
     'modifier_constant' => {
       '.all' => [
@@ -713,6 +713,10 @@ sub make_tree {   # Generated/Inlined by Pegex::Grammar (0.57)
     },
     'program' => {
       '.all' => [
+        {
+          '+min' => 0,
+          '.ref' => 'comment'
+        },
         {
           '.ref' => 'mcu_select'
         },
@@ -895,7 +899,14 @@ sub make_tree {   # Generated/Inlined by Pegex::Grammar (0.57)
       '.rgx' => qr/\G([mu]?s|[kM]?Hz|%)/
     },
     'validated_variable' => {
-      '.ref' => 'identifier_without_keyword'
+      '.all' => [
+        {
+          '.ref' => 'identifier_without_keyword'
+        },
+        {
+          '.rgx' => qr/\G([+-]?)/
+        }
+      ]
     },
     'value' => {
       '.all' => [

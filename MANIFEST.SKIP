@@ -85,6 +85,7 @@ TODO
 compile_into_module$
 \.d$
 \.lst$
+\.lxt$
 \.map$
 \.hex$
 \.cod$
@@ -93,3 +94,4 @@ compile_into_module$
 gh-pages
 Helloworld*
 vicmeme.jpg
+BaseOld.pm

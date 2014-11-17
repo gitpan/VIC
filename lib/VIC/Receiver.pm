@@ -6,7 +6,7 @@ use POSIX ();
 use List::Util qw(max);
 use List::MoreUtils qw(any firstidx indexes);
 
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -33,6 +33,14 @@ has global_collections => {};
 
 sub stack { reverse @{shift->parser->stack}; }
 
+sub supported_chips { return VIC::PIC::Any::supported_chips(); }
+
+sub supported_simulators { return VIC::PIC::Any::supported_simulators(); }
+
+sub is_chip_supported { return VIC::PIC::Any::is_chip_supported(@_); }
+
+sub list_chip_features { return VIC::PIC::Any::list_chip_features(@_); }
+
 sub got_mcu_select {
     my ($self, $type) = @_;
     # override the PIC in code if defined
@@ -40,7 +48,10 @@ sub got_mcu_select {
     $type = lc $type;
     # assume supported type else return
     $self->pic(VIC::PIC::Any->new($type));
-    die "$type is not a supported chip" unless $self->pic->type eq $type;
+    unless (defined $self->pic and
+        $self->pic->type eq $type) {
+        $self->parser->throw_error("$type is not a supported chip");
+    }
     $self->ast->{include} = $self->pic->include;
     # set the defaults in case the headers are not provided by the user
     $self->ast->{org} = $self->pic->org;
@@ -651,6 +662,8 @@ sub got_validated_variable {
     if (ref $list eq 'ARRAY') {
         $self->flatten($list);
         $varname = shift @$list;
+        my $suffix = shift @$list;
+        $varname .= $suffix if defined $suffix;
     } else {
         $varname = $list;
     }
@@ -926,7 +939,7 @@ sub do_i_use_stack {
     my ($self, @deps) = @_;
     return 0 unless @deps;
     my @bits = map { $self->pic->address_bits($_) } @deps;
-    return 0 if max(@bits) == $self->pic->register_size;
+    return 0 if max(@bits) == $self->pic->wreg_size;
     return 1;
 }
 

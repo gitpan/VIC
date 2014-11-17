@@ -1,12 +1,12 @@
-package VIC::PIC::P16F690;
+package VIC::PIC::P16F677;
 use strict;
 use warnings;
 use Moo;
 extends 'VIC::PIC::Base';
 
 # role CodeGen
-has type => (is => 'ro', default => 'p16f690');
-has include => (is => 'ro', default => 'p16f690.inc');
+has type => (is => 'ro', default => 'p16f677');
+has include => (is => 'ro', default => 'p16f677.inc');
 
 #role Chip
 has f_osc => (is => 'ro', default => 4e6); # 4MHz internal oscillator
@@ -16,8 +16,8 @@ has wreg_size => (is => 'ro', default => 8); # 8-bit register WREG
 # all memory is in bytes
 has memory => (is => 'ro', default => sub {
     {
-        flash => 4096, # words
-        SRAM => 256,
+        flash => 2048, # words
+        SRAM => 128,
         EEPROM => 256,
     }
 });
@@ -25,7 +25,7 @@ has address => (is => 'ro', default => sub {
     {
         isr => [ 0x0004 ],
         reset => [ 0x0000 ],
-        range => [ 0x0000, 0x0FFF ],
+        range => [ 0x0000, 0x07FF ],
     }
 });
 
@@ -43,8 +43,7 @@ has banks => (is => 'ro', default => sub {
         size => 0x80,
         gpr => {
             0 => [ 0x020, 0x07F],
-            1 => [ 0x0A0, 0x0EF],
-            2 => [ 0x120, 0x16F],
+            1 => [ 0x0A0, 0x0BF],
         },
         # remapping of these addresses automatically done by chip
         common => [0x070, 0x07F],
@@ -82,41 +81,24 @@ has registers => (is => 'ro', default => sub {
         EECON2 => [0x18D], # not addressable apparently
         TMR1L => [0x00E],
         PCON => [0x08E],
-        EEDATH => [0x10E],
         TMR1H => [0x00F],
         OSCCON => [0x08F],
-        EEADRH => [0x10F],
         T1CON => [0x010],
         OSCTUNE => [0x090],
-        TMR2 => [0x011],
         T2CON => [0x012],
-        PR2 => [0x092],
         SSPBUF => [0x013],
         SSPADD => [0x093],
         SSPCON => [0x014],
         SSPSTAT => [0x094],
-        CCPR1L => [0x015],
         WPUA => [0x095],
         WPUB => [0x115],
-        CCPR1H => [0x016],
         IOCA => [0x096],
         IOCB => [0x116],
-        CCP1CON => [0x017],
         WDTCON => [0x097],
-        RCSTA => [0x018],
-        TXSTA => [0x098],
         VRCON => [0x118],
-        TXREG => [0x019],
-        SPBRG => [0x099],
         CM1CON0 => [0x119],
-        RCREG => [0x01A],
-        SPBRGH => [0x09A],
         CM2CON0 => [0x11A],
-        BAUDCTL => [0x09B],
         CM2CON1 => [0x11B],
-        PWM1CON => [0x01C],
-        ECCPAS => [0x01D],
-        PSTRCON => [0x19D],
         ADRESH => [0x01E],
         ADRESL => [0x09E],
         ANSEL => [0x11E],
@@ -134,16 +116,16 @@ has pins => (is => 'ro', default => sub {
         2 => [qw(RA5 T1CKI OSC1 CLKIN)],
         3 => [qw(RA4 AN3 T1G OSC2 CLKOUT)],
         4 => [qw(RA3 MCLR Vpp)],
-        5 => [qw(RC5 CCP1 P1A)],
-        6 => [qw(RC4 C2OUT P1B)],
-        7 => [qw(RC3 AN7 C12IN3- P1C)],
+        5 => [qw(RC5)],
+        6 => [qw(RC4 C2OUT)],
+        7 => [qw(RC3 AN7 C12IN3-)],
         8 => [qw(RC6 AN8 SS)],
         9 => [qw(RC7 AN9 SDO)],
-        10 => [qw(RB7 TX CK)],
+        10 => [qw(RB7)],
         11 => [qw(RB6 SCK SCL)],
-        12 => [qw(RB5 AN11 RX DT)],
+        12 => [qw(RB5 AN11)],
         13 => [qw(RB4 AN10 SDI SDA)],
-        14 => [qw(RC2 AN6 C12IN2- P1D)],
+        14 => [qw(RC2 AN6 C12IN2-)],
         15 => [qw(RC1 AN5 C12IN1-)],
         16 => [qw(RC0 AN4 C2IN+)],
         17 => [qw(RA2 AN2 T0CKI INT C1OUT)],
@@ -318,20 +300,9 @@ has timer_pins => (is => 'ro', default => sub {
     {
         TMR0 => 'TMR0',
         TMR1 => ['TMR1H', 'TMR1L'],
-        TMR2 => 'TMR2',
         T0CKI => 17,
         T1CKI => 2,
         T1G => 3,
-    }
-});
-
-has eccp_pins => (is => 'ro', default => sub {
-    {   # pin => pin_no, tris, bit
-        P1D => [14, 'TRISC', 2],
-        P1C => [7, 'TRISC', 3],
-        P1B => [6, 'TRISC', 4],
-        P1A => [5, 'TRISC', 5],
-        CCP1 => [5, 'TRISC', 5],
     }
 });
 
@@ -354,15 +325,6 @@ has ioc_pins => (is => 'ro', default => sub {
         RB5 => 12,
         RB6 => 11,
         RB7 => 10,
-    }
-});
-
-has usart_pins => (is => 'ro', default => sub {
-    {
-        async_in => 'RX',
-        async_out => 'TX',
-        sync_clock => 'CK',
-        sync_data => 'DT',
     }
 });
 
@@ -405,8 +367,8 @@ has cmp_output_pins => (is => 'ro', default => sub {
     }
 });
 
-my @rolenames = qw(CodeGen Operators Chip GPIO ADC ISR Timer Operations ECCP
-                    USART SPI I2C Comparator);
+my @rolenames = qw(CodeGen Operators Chip GPIO ADC ISR Timer Operations SPI I2C
+Comparator);
 my @roles = map (("VIC::PIC::Roles::$_", "VIC::PIC::Functions::$_"), @rolenames);
 with @roles;
 
@@ -422,7 +384,7 @@ __END__
 
 =head1 NAME
 
-VIC::PIC::P16F690
+VIC::PIC::P16F677
 
 =head1 SYNOPSIS
 
