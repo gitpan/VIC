@@ -5,7 +5,7 @@ use warnings;
 use Getopt::Long;
 use VIC;
 
-our $VERSION = '0.15';
+our $VERSION = '0.16';
 $VERSION = eval $VERSION;
 
 sub usage {
@@ -20,8 +20,10 @@ sub usage {
         -i, --intermediate    Inline the intermediate code with the output
         --list-chips          List the supported microcontroller chips
         --list-simulators     List the supported simulators
-        --check-support <PIC> Checks if the given PIC is supported
-        --chip-features <PIC> Lists the features of the PIC
+        --supports <PIC>      Checks if the given PIC is supported
+        --list-features <PIC> Lists the features of the PIC
+        --no-hex              Does not generate the hex file using gputils
+        --list-gputils        List the path for the gputils executables
 
 ...
     die $usage;
@@ -54,6 +56,15 @@ $stxt
 
 ...
     print $txt;
+}
+
+sub list_gputils {
+    my @utils = VIC::gputils();
+    if (@utils) {
+        print "gpasm: $utils[0]\ngplink: $utils[1]\n";
+    } else {
+        print "No gputils found.";
+    }
 }
 
 sub check_support {
@@ -94,6 +105,8 @@ sub run {
     my $list_sims = 0;
     my $check_support = undef;
     my $chip_features = undef;
+    my $no_hex = 0;
+    my $list_gputils = 0;
 
     GetOptions(
         "output=s" => \$output,
@@ -104,8 +117,10 @@ sub run {
         "version" => \$version,
         "list-chips" => \$list_chips,
         "list-simulators" => \$list_sims,
-        "check-support=s" => \$check_support,
-        "chip-features=s" => \$chip_features,
+        "list-features=s" => \$chip_features,
+        "supports=s" => \$check_support,
+        "no-hex" => \$no_hex,
+        "list-gputils" => \$list_gputils,
     ) or usage();
     usage() if $help;
     version() if $version;
@@ -113,23 +128,31 @@ sub run {
     print_sims() if $list_sims;
     check_support($check_support) if $check_support;
     list_chip_features($chip_features) if $chip_features;
+    list_gputils() if $list_gputils;
     return if ($list_chips or $list_sims or $check_support or
-                $chip_features);
+                $chip_features or $list_gputils);
 
     $VIC::Debug = $debug;
     $VIC::Intermediate = $intermediate;
 
     my $fh;
     if (length $output) {
+        $no_hex = 1 if $output =~ /\.asm$/;
+        $output =~ s/\.hex$/\.asm/g;
         open $fh, ">$output" or die "Unable to open $output: $!";
-        open STDOUT, ">&", $fh or die "$!";
+    } else {
+        $fh = *STDOUT;
+        $no_hex = 1; # no file name given so print to screen
     }
-    return unless scalar @ARGV;
+    return usage() unless scalar @ARGV;
     if (defined $pic) {
         $pic =~ s/^PIC/P/gi;
         $pic = lc $pic;
     }
-    print VIC::compile(do {local $/; <>}, $pic);
+    my ($compiled_out, $chip) = VIC::compile(do {local $/; <>}, $pic);
+    print $fh $compiled_out;
+    return if $no_hex;
+    return VIC::assemble($chip, $output) if length $output;
 }
 
 1;

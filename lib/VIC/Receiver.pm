@@ -6,7 +6,7 @@ use POSIX ();
 use List::Util qw(max);
 use List::MoreUtils qw(any firstidx indexes);
 
-our $VERSION = '0.15';
+our $VERSION = '0.16';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -40,6 +40,8 @@ sub supported_simulators { return VIC::PIC::Any::supported_simulators(); }
 sub is_chip_supported { return VIC::PIC::Any::is_chip_supported(@_); }
 
 sub list_chip_features { return VIC::PIC::Any::list_chip_features(@_); }
+
+sub current_chip { return $_[0]->pic->type; }
 
 sub got_mcu_select {
     my ($self, $type) = @_;
