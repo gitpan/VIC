@@ -50,6 +50,7 @@ sub compiles_ok {
     unless (defined $output) {
         croak("compiles_ok: must pass an output code to compare with");
     }
+    $VIC::Verbose = 0;
     my $compiled = VIC::compile($input);
     $compiled = sanitize($compiled);
     $output = sanitize($output);
@@ -83,6 +84,7 @@ sub assembles_ok {
     unless (defined $input) {
         croak("assembles_ok: must pass an input code to compile");
     }
+    $VIC::Verbose = 1;
     my ($gpasm, $gplink) = VIC::gputils();
     return $Tester->skip("gputils is not installed or cannot be found") unless (defined $gpasm and defined $gplink);
     return $Tester->skip("$gpasm is invalid.") unless -e $gpasm;

@@ -5,7 +5,7 @@ use warnings;
 use Getopt::Long;
 use VIC;
 
-our $VERSION = '0.19';
+our $VERSION = '0.20';
 $VERSION = eval $VERSION;
 
 sub usage {
@@ -13,14 +13,16 @@ sub usage {
     Usage: vic [options] <input file>
 
         -h, --help            This help message
-        -V, --version         Version number
+        --version             Version number
+        --verbose             Verbose printing during compilation
         -p, --pic <PIC>       Use this PIC choice instead of the one in the code
         -o, --output <file>   Writes the compiled syntax to the given output file
         -d, --debug           Dump the compile tree for debugging
         -i, --intermediate    Inline the intermediate code with the output
+        --simulate            Simulate the code that was compiled
         --list-chips          List the supported microcontroller chips
         --list-simulators     List the supported simulators
-        --supports <PIC>      Checks if the given PIC is supported
+        --check <PIC>         Checks if the given PIC is supported
         --list-features <PIC> Lists the features of the PIC
         --no-hex              Does not generate the hex file using gputils
         --list-gputils        List the path for the gputils executables
@@ -101,12 +103,14 @@ sub run {
     my $pic = undef;
     my $intermediate = undef;
     my $version = 0;
+    my $verbose = 0;
     my $list_chips = 0;
     my $list_sims = 0;
     my $check_support = undef;
     my $chip_features = undef;
     my $no_hex = 0;
     my $list_gputils = 0;
+    my $simulate = 0;
 
     GetOptions(
         "output=s" => \$output,
@@ -115,12 +119,14 @@ sub run {
         "pic=s" => \$pic,
         "intermediate" => \$intermediate,
         "version" => \$version,
+        "verbose" => \$verbose,
         "list-chips" => \$list_chips,
         "list-simulators" => \$list_sims,
         "list-features=s" => \$chip_features,
-        "supports=s" => \$check_support,
+        "check=s" => \$check_support,
         "no-hex" => \$no_hex,
         "list-gputils" => \$list_gputils,
+        "simulate" => \$simulate,
     ) or usage();
     usage() if $help;
     version() if $version;
@@ -134,6 +140,7 @@ sub run {
 
     $VIC::Debug = $debug;
     $VIC::Intermediate = $intermediate;
+    $VIC::Verbose = $verbose;
 
     my $fh;
     if (length $output) {
@@ -149,10 +156,13 @@ sub run {
         $pic =~ s/^PIC/P/gi;
         $pic = lc $pic;
     }
-    my ($compiled_out, $chip) = VIC::compile(do {local $/; <>}, $pic);
+    my ($compiled_out, $chip, $sim) = VIC::compile(do {local $/; <>}, $pic);
     print $fh $compiled_out;
+    warn "Cannot simulate unless -o/--output option is used." if ($simulate and $no_hex);
     return if $no_hex;
-    return VIC::assemble($chip, $output) if length $output;
+    my $ret = VIC::assemble($chip, $output) if length $output;
+    return $ret unless $simulate;
+    return VIC::simulate($sim, $ret);
 }
 
 1;
