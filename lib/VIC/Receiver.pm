@@ -6,7 +6,7 @@ use POSIX ();
 use List::Util qw(max);
 use List::MoreUtils qw(any firstidx indexes);
 
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -38,6 +38,8 @@ sub supported_chips { return VIC::PIC::Any::supported_chips(); }
 sub supported_simulators { return VIC::PIC::Any::supported_simulators(); }
 
 sub is_chip_supported { return VIC::PIC::Any::is_chip_supported(@_); }
+
+sub is_simulator_supported { return VIC::PIC::Any::is_simulator_supported(@_); }
 
 sub list_chip_features { return VIC::PIC::Any::list_chip_features(@_); }
 
@@ -707,6 +709,7 @@ sub got_boolean {
     } else {
         $b = $list;
     }
+    return 0 unless defined $b;
     return 1 if $b =~ /TRUE|true/i;
     return 1 if $b == 1;
     return 0 if $b =~ /FALSE|false/i;

@@ -5,7 +5,7 @@ use bigint;
 use Carp;
 use Pegex::Base; # use this instead of Mo
 
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 $VERSION = eval $VERSION;
 
 has type => 'gpsim';
@@ -180,7 +180,7 @@ sub attach_led {
                 my $simport = $self->_get_simport($port, $_);
                 $code .= $self->_gen_led($c, $x, $y, $node, $simport, $color);
             }
-            $self->led_count($self->led_count + $count);
+            $self->led_count($self->led_count + $count + 1);
         }
     }
     return $code;
@@ -302,6 +302,10 @@ sub _get_operator {
     my $op = shift;
     return '==' if $op eq 'EQ';
     return '!=' if $op eq 'NE';
+    return '>' if $op eq 'GT';
+    return '>=' if $op eq 'GE';
+    return '<' if $op eq 'LT';
+    return '<=' if $op eq 'LE';
     return undef;
 }
 

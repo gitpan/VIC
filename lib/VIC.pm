@@ -9,6 +9,22 @@ use Capture::Tiny ':all';
 use VIC::Parser;
 use VIC::Grammar;
 use VIC::Receiver;
+use base qw(Exporter);
+
+our @EXPORT = qw(
+    compile
+    assemble
+    simulate
+    supported_chips
+    supported_simulators
+    gpasm
+    gplink
+    gputils
+    bindir
+    is_chip_supported
+    is_simulator_supported
+    list_chip_features
+);
 
 our $Debug = 0;
 our $Verbose = 0;
@@ -17,7 +33,7 @@ our $GPASM;
 our $GPLINK;
 our $GPUTILSDIR;
 
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 $VERSION = eval $VERSION;
 
 sub compile {
@@ -46,6 +62,8 @@ sub supported_simulators { return VIC::Receiver::supported_simulators(); }
 
 sub is_chip_supported { return VIC::Receiver::is_chip_supported(@_) };
 
+sub is_simulator_supported { return VIC::Receiver::is_simulator_supported(@_) };
+
 sub list_chip_features { return VIC::Receiver::list_chip_features(@_) };
 
 sub _load_gputils {
@@ -58,9 +76,9 @@ sub _load_gputils {
         } or warn "Cannot find Alien::gputils. Ignoring\n";
         if ($alien) {
             print "Looking for gpasm and gplink using Alien::gputils\n" if $Verbose;
-            $gpasm = $alien->gpasm;
-            $gplink = $alien->gplink;
-            $bindir = $alien->bin_dir;
+            $gpasm = $alien->gpasm() if $alien->can('gpasm');
+            $gplink = $alien->gplink() if $alien->can('gplink');
+            $bindir = $alien->bin_dir() if $alien->can('bin_dir');
         }
         unless (defined $gpasm and defined $gplink) {
             print "Looking for gpasm and gplink in \$ENV{PATH}\n" if $Verbose;

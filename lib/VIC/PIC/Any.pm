@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use Carp;
 
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 $VERSION = eval $VERSION;
 
 use VIC::PIC::Gpsim;
@@ -92,6 +92,12 @@ sub supported_chips {
 sub supported_simulators {
     my @sims = sort(keys %{+SIMS});
     return wantarray ? @sims : \@sims;
+}
+
+sub is_simulator_supported {
+    my $ss = shift;
+    my @sims = &supported_simulators();
+    return (grep {/$ss/} @sims) ? 1 : 0;
 }
 
 sub is_chip_supported {

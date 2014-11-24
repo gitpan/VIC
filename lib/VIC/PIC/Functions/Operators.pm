@@ -2,7 +2,7 @@ package VIC::PIC::Functions::Operators;
 use strict;
 use warnings;
 use bigint;
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 $VERSION = eval $VERSION;
 use Carp;
 use POSIX ();
@@ -267,11 +267,18 @@ sub op_not {
     $var2 = uc $var2;
     return << "...";
 \t;;;; generate code for !$var2
-\tcomf $var2, W
-\tbtfsc STATUS, Z
+\tmovf $var2, W
+\tbtfss STATUS, Z
+\tgoto \$ + 3
 \tmovlw 1
+\tgoto \$ + 2
+\tclrw
 $pred
 ...
+# used to be
+#;;\tcomf $var2, W
+#;;\tbtfsc STATUS, Z
+#;;\tmovlw 1
 }
 
 sub op_comp {
@@ -1034,13 +1041,17 @@ $code
 sub _get_predicate {
     my ($self, $comment, %extra) = @_;
     my $pred = '';
+    my %labels = ();
     ## predicate can be either a result or a jump block
     unless (defined $extra{RESULT}) {
         my $flabel = $extra{SWAP} ? $extra{TRUE} : $extra{FALSE};
         my $tlabel = $extra{SWAP} ? $extra{FALSE} : $extra{TRUE};
         my $elabel = $extra{END};
+        $labels{TRUE} = $tlabel;
+        $labels{FALSE} = $flabel;
+        $labels{END} = $elabel;
         $pred .= << "..."
-\tbtfss STATUS, Z ;; $comment ?
+;; $comment
 \tgoto $flabel
 \tgoto $tlabel
 $elabel:
@@ -1051,8 +1062,11 @@ $elabel:
         my $tlabel = $extra{SWAP} ? "$extra{END}_f_$extra{COUNTER}" :
                         "$extra{END}_t_$extra{COUNTER}";
         my $elabel = "$extra{END}_e_$extra{COUNTER}";
+        $labels{TRUE} = $tlabel;
+        $labels{FALSE} = $flabel;
+        $labels{END} = $elabel;
         $pred .=  << "...";
-\tbtfss STATUS, Z ;; $comment ?
+;; $comment
 \tgoto $flabel
 \tgoto $tlabel
 $flabel:
@@ -1064,7 +1078,7 @@ $elabel:
 ...
         $pred .= $self->op_assign_wreg($extra{RESULT});
     }
-    return $pred;
+    return wantarray ? ($pred, %labels) : $pred;
 }
 
 sub _get_predicate_literals {
@@ -1109,6 +1123,7 @@ sub op_eq {
 \tbcf STATUS, Z
 \tmovf $rhs, W
 \txorwf $lhs, W
+\tbtfss STATUS, Z
 $pred
 ...
     } elsif ($rhs !~ $literal and $lhs =~ $literal) {
@@ -1119,6 +1134,7 @@ $pred
 \tbcf STATUS, Z
 \tmovf $rhs, W
 \txorlw $lhs
+\tbtfss STATUS, Z ;; $comment
 $pred
 ...
     } elsif ($rhs =~ $literal and $lhs !~ $literal) {
@@ -1129,6 +1145,7 @@ $pred
 \tbcf STATUS, Z
 \tmovf $lhs, W
 \txorlw $rhs
+\tbtfss STATUS, Z ;; $comment
 $pred
 ...
     } else {
@@ -1266,7 +1283,7 @@ sub op_and {
         carp "The STATUS register does not exist for the chip ", $self->type;
         return;
     }
-    my $pred = $self->_get_predicate("$lhs && $rhs", %extra);
+    my ($pred, %labels) = $self->_get_predicate("$lhs && $rhs", %extra);
     my $literal = qr/^\d+$/;
     if ($lhs !~ $literal and $rhs !~ $literal) {
         # lhs and rhs are variables
@@ -1277,6 +1294,7 @@ sub op_and {
 \tbcf STATUS, Z
 \tmovf $lhs, W
 \tbtfss STATUS, Z  ;; $lhs is false if it is set else true
+\tgoto $labels{FALSE}
 \tmovf $rhs, W
 \tbtfss STATUS, Z ;; $rhs is false if it is set else true
 $pred
@@ -1291,6 +1309,7 @@ $pred
 \tmovlw $lhs
 \txorlw 0x00        ;; $lhs ^ 0 will set the Z bit
 \tbtfss STATUS, Z  ;; $lhs is false if it is set else true
+\tgoto $labels{FALSE}
 \tmovf $rhs, W
 \tbtfss STATUS, Z ;; $rhs is false if it is set else true
 $pred
@@ -1305,6 +1324,7 @@ $pred
 \tmovlw $rhs
 \txorlw 0x00        ;; $rhs ^ 0 will set the Z bit
 \tbtfss STATUS, Z  ;; $rhs is false if it is set else true
+\tgoto $labels{FALSE}
 \tmovf $lhs, W
 \tbtfss STATUS, Z ;; $lhs is false if it is set else true
 $pred
@@ -1323,7 +1343,7 @@ sub op_or {
         carp "The STATUS register does not exist for the chip ", $self->type;
         return;
     }
-    my $pred = $self->_get_predicate("$lhs || $rhs", %extra);
+    my ($pred, %labels) = $self->_get_predicate("$lhs || $rhs", %extra);
     my $literal = qr/^\d+$/;
     if ($lhs !~ $literal and $rhs !~ $literal) {
         # lhs and rhs are variables
@@ -1333,7 +1353,8 @@ sub op_or {
 \t;; perform check for $lhs || $rhs
 \tbcf STATUS, Z
 \tmovf $lhs, W
-\tbtfsc STATUS, Z  ;; $lhs is false if it is set else true
+\tbtfss STATUS, Z  ;; $lhs is false if it is set else true
+\tgoto $labels{TRUE}
 \tmovf $rhs, W
 \tbtfsc STATUS, Z ;; $rhs is false if it is set else true
 $pred
@@ -1347,7 +1368,8 @@ $pred
 \tbcf STATUS, Z
 \tmovlw $lhs
 \txorlw 0x00        ;; $lhs ^ 0 will set the Z bit
-\tbtfsc STATUS, Z  ;; $lhs is false if it is set else true
+\tbtfss STATUS, Z  ;; $lhs is false if it is set else true
+\tgoto $labels{TRUE}
 \tmovf $rhs, W
 \tbtfsc STATUS, Z ;; $rhs is false if it is set else true
 $pred
@@ -1361,7 +1383,8 @@ $pred
 \tbcf STATUS, Z
 \tmovlw $rhs
 \txorlw 0x00        ;; $rhs ^ 0 will set the Z bit
-\tbtfsc STATUS, Z  ;; $rhs is false if it is set else true
+\tbtfss STATUS, Z  ;; $rhs is false if it is set else true
+\tgoto $labels{TRUE}
 \tmovf $lhs, W
 \tbtfsc STATUS, Z ;; $lhs is false if it is set else true
 $pred
