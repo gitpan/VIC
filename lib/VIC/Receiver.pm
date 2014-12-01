@@ -6,7 +6,7 @@ use POSIX ();
 use List::Util qw(max);
 use List::MoreUtils qw(any firstidx indexes);
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 $VERSION = eval $VERSION;
 
 use Pegex::Base;
@@ -42,6 +42,8 @@ sub is_chip_supported { return VIC::PIC::Any::is_chip_supported(@_); }
 sub is_simulator_supported { return VIC::PIC::Any::is_simulator_supported(@_); }
 
 sub list_chip_features { return VIC::PIC::Any::list_chip_features(@_); }
+
+sub print_pinout { return VIC::PIC::Any::print_pinout(@_); }
 
 sub current_chip { return $_[0]->pic->type; }
 
@@ -744,6 +746,14 @@ sub got_number_units {
     $num *= 1e6 if $units eq 'MHz';
     # ignore the '%' sign for now
     return $num;
+}
+
+sub got_real_number {
+    my ($self, $list) = @_;
+    $list .= '0' if $list =~ /\d+\.$/;
+    $list = "0.$1" if $list =~ /^\.(\d+)$/;
+    $list = "-0.$1" if $list =~ /^-\.(\d+)$/;
+    return $list;
 }
 
 # remove the dumb stuff from the tree

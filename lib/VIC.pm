@@ -33,7 +33,7 @@ our $GPASM;
 our $GPLINK;
 our $GPUTILSDIR;
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 $VERSION = eval $VERSION;
 
 sub compile {
@@ -65,6 +65,8 @@ sub is_chip_supported { return VIC::Receiver::is_chip_supported(@_) };
 sub is_simulator_supported { return VIC::Receiver::is_simulator_supported(@_) };
 
 sub list_chip_features { return VIC::Receiver::list_chip_features(@_) };
+
+sub print_pinout { return VIC::Receiver::print_pinout(@_) };
 
 sub _load_gputils {
     my ($gpasm, $gplink, $bindir);
